@@ -1,5 +1,7 @@
 # Jishu Android SDK
 
+![github package](https://github.com/user-attachments/assets/e01c22ca-72bf-4474-bbfc-d262fdcf8bed)
+
 A lightweight Android library that checks [Jishu](https://jishu.page) promo access from native Android apps, with an optional bridge for RevenueCat entitlements.
 
 - **Current version:** `0.1.0`
