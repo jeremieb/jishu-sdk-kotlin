@@ -31,12 +31,13 @@ internal class JishuClient(private val config: JishuConfig) {
     private val endpoint = "${config.baseUrl}/api/v1/mobile/entitlements/check"
     private val mediaType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun sendContactMessage(message: ContactMessage) {
+    suspend fun sendContactMessage(message: ContactMessage, displayUserId: String) {
         val requestDto = ContactRequest(
             senderName = message.senderName,
             senderEmail = message.senderEmail,
             subject = message.subject,
-            body = message.body
+            body = message.body,
+            userId = message.userId ?: displayUserId
         )
         val bodyJson = json.encodeToString(requestDto).toRequestBody(mediaType)
         val url = "${config.baseUrl}/api/apps/${config.appId}/contact"
