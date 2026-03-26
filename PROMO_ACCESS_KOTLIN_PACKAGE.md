@@ -1,6 +1,8 @@
-# Promo Access Kotlin Package Start Doc
+# Jishu Kotlin SDK Messaging Doc
 
-This file is the implementation handoff for the separate public Kotlin SDK repository.
+This file is the implementation handoff for the separate public Kotlin SDK repository at:
+
+- `/Users/jeremieberduck/Developer/jishu-sdk-kotlin`
 
 Artifact / module name:
 
@@ -8,274 +10,241 @@ Artifact / module name:
 
 Primary goal:
 
-- provide a lightweight Android SDK that can check Jishu promo access from native apps and later support RevenueCat merge helpers
+- make contact messaging a first-class SDK capability for native Android apps
+- let app developers wire a simple Compose or View-based form to a `ContactMessage` object and send it to Jishu with minimal setup
+- ship an example Android app that demonstrates the full integration flow
+
+This document is about messaging support. Existing promo-access functionality may remain in the SDK, but messaging is the new priority capability.
+
+## Product Behavior
+
+The host app is configured with a Jishu `appId`.
+
+The SDK should let the app developer:
+
+1. create a simple contact screen
+2. map the entered values into a `ContactMessage`
+3. call a single SDK method
+4. let the SDK send `POST /api/apps/:appId/contact`
+
+On success:
+
+- the message is stored by Jishu
+- the app owner sees it in Dashboard → User Messages
+- the app owner may receive a push notification in Jishu client apps
 
 ## Locked API Contract
 
-The current server contract is live on staging and should now be treated as the SDK v1 contract.
-
 Endpoint:
 
-- `POST /api/v1/mobile/entitlements/check`
+- `POST /api/apps/:appId/contact`
 
 Base URL rule:
 
 - callers pass the root origin only, for example `https://jishu.page` or `https://staging.jishu.page`
-- the SDK appends `/api/v1/mobile/entitlements/check`
+- the SDK appends `/api/apps/:appId/contact`
 - reject base URLs that already contain a path component other than `/`
 
 Headers:
 
-- `Authorization: Bearer <apiToken>`
 - `Content-Type: application/json`
+- no auth header for this endpoint
 
 Request body:
 
 ```json
 {
-  "appId": "app_id",
-  "platform": "android",
-  "externalUserId": "customer_123",
-  "deviceId": "550e8400-e29b-41d4-a716-446655440000",
-  "environment": "staging"
+  "senderEmail": "visitor@example.com",
+  "senderName": "Jane Visitor",
+  "subject": "Quick question",
+  "body": "Hi, I wanted to ask about..."
 }
 ```
 
-Response body:
+Success response:
 
 ```json
-{
-  "granted": true,
-  "grantId": "grant_id_or_null",
-  "matchType": "device",
-  "expiresAt": "2026-04-24T12:00:00.000Z",
-  "serverTime": "2026-03-24T12:00:00.000Z"
-}
+{ "ok": true }
 ```
 
-Notes:
+Error shape:
 
-- `platform` is always hardcoded to `"android"` inside the SDK
-- at least one of `externalUserId` or `deviceId` must be sent
-- `environment` is optional and may be `production`, `staging`, `testflight`, `internal`, or omitted
-- the server may return `matchType = "none"` with `granted = false`
+```json
+{ "error": "Human-readable message" }
+```
+
+Validation rules:
+
+- `senderEmail` is required, valid email, max 255 chars
+- `body` is required, max 5000 chars
+- `senderName` is optional, max 255 chars
+- `subject` is optional, max 255 chars
+- endpoint is public, but `appId` must exist server-side
+- rate limited per IP hash + app
 
 ## Public API
 
-Keep the first public API narrow:
+The messaging surface should be extremely small.
+
+Recommended public API:
 
 ```kotlin
 object Jishu {
     fun configure(
         context: Context,
         baseUrl: String,
-        apiToken: String,
         appId: String,
+        apiToken: String? = null,
         environment: String? = null,
         enableDebugLogs: Boolean = false
     )
 
-    val displayUserID: String
-
-    suspend fun checkAccess(externalUserId: String? = null): AccessResult
+    suspend fun sendContactMessage(message: ContactMessage)
 }
 ```
 
-Phase 2 optional helper:
+Required request model:
 
 ```kotlin
-suspend fun hasAccessWithRevenueCat(
-    entitlementId: String,
-    externalUserId: String? = null
-): RevenueCatAccessResult
-```
-
-Required response model:
-
-```kotlin
-data class AccessResult(
-    val granted: Boolean,
-    val grantId: String?,
-    val matchType: MatchType,
-    val expiresAt: Instant?,
-    val serverTime: Instant
+data class ContactMessage(
+    val senderEmail: String,
+    val senderName: String? = null,
+    val subject: String? = null,
+    val body: String
 )
+```
 
-enum class MatchType {
-    USER,
-    DEVICE,
-    NONE
+Recommended error model:
+
+- reuse `JishuApiException` where reasonable
+- preserve the server `{ error }` message when safe to do so
+- keep configuration errors separate from API request errors
+
+Important compatibility note:
+
+- if promo-access APIs remain in the SDK, `apiToken` may still be used there
+- messaging itself must not require an API token
+
+## Expected Android Integration
+
+The intended developer experience should look roughly like this:
+
+```kotlin
+viewModelScope.launch {
+    try {
+        Jishu.sendContactMessage(
+            ContactMessage(
+                senderEmail = email,
+                senderName = name.takeIf { it.isNotBlank() },
+                subject = subject.takeIf { it.isNotBlank() },
+                body = body
+            )
+        )
+    } catch (e: JishuApiException) {
+        uiState = uiState.copy(error = e.message)
+    }
 }
 ```
 
-## Identity Rules
+That is the bar: the host app should be able to connect a basic screen to a message object and send it with one SDK call.
 
-Use `deviceId` internally, but expose it to app developers as:
+## Implementation Requirements
 
-- `Jishu.displayUserID`
+Suggested additions in the Kotlin repo:
 
-Implementation requirements:
+```text
+jishu/src/main/java/io/jishu/sdk/contact/ContactMessage.kt
+jishu/src/main/java/io/jishu/sdk/network/dto/ContactMessageRequest.kt
+```
 
-- generate a UUID once
-- persist it locally
-- return the same value on every launch
-- never rotate it automatically
+Expected updates:
 
-Storage recommendation:
+- `jishu/src/main/java/io/jishu/sdk/Jishu.kt`
+- `jishu/src/main/java/io/jishu/sdk/config/JishuConfig.kt`
+- `jishu/src/main/java/io/jishu/sdk/network/JishuClient.kt`
+- `jishu/src/main/java/io/jishu/sdk/network/JishuApiException.kt` if needed
 
-- `SharedPreferences` for the first cut
+Behavior requirements:
 
-Reason:
-
-- simplest setup for a public package v1
-- DataStore can be revisited later if needed
-
-Important warning for package docs:
-
-- reinstalling the app creates a new ID
-- any active promo grant attached to the old ID stops matching
-- `externalUserId` is the preferred mode whenever the customer already has authentication
-
-## Network Behavior
-
-Implementation requirements:
-
-- use OkHttp + Kotlin serialization or Moshi
+- use OkHttp
+- use the repo's existing JSON approach for request serialization
 - 10 second timeout
-- no retries for 4xx responses
+- no automatic retry for 4xx responses
 - at most 1 retry for transient transport failures or 5xx responses
-- never log the raw API token
-- debug logging must be opt-in
+- never log message body or raw API token in debug output
+- validate required fields before sending when it improves developer feedback
 
-Caching rule for v1:
+## Example App Requirement
 
-- cache only positive responses
-- cache until the earlier of:
-  - `expiresAt`
-  - 5 minutes from fetch time
-- do not cache negative responses beyond the current call
+Add a small Android example app to demonstrate messaging end to end.
 
-## Suggested Module Layout
+The example app should include:
 
-```text
-jishu/
-  src/main/java/.../Jishu.kt
-  src/main/java/.../config/JishuConfig.kt
-  src/main/java/.../identity/DeviceIdStore.kt
-  src/main/java/.../network/JishuClient.kt
-  src/main/java/.../model/AccessResult.kt
-  src/main/java/.../cache/AccessCache.kt
-  src/main/java/.../logging/JishuLogger.kt
-```
+- SDK configuration
+- a simple contact screen
+- loading state
+- success message
+- failure message from SDK exception
 
-Tests:
+The example should be checked into the SDK repo, not left as README pseudocode only.
 
-```text
-jishu/src/test/java/.../
-  JishuClientTest.kt
-  DeviceIdStoreTest.kt
-  AccessCacheTest.kt
-  AccessResultParsingTest.kt
-```
-
-## Android Baseline
-
-Suggested minimum:
-
-- `minSdk 24`
-- Kotlin coroutines for the public async API
-
-If the package needs wider compatibility later, revisit after the first working release.
-
-## RevenueCat Scope
-
-Do not make RevenueCat a hard dependency in the first package cut.
-
-Recommended approach:
-
-- ship the core entitlement client first
-- add RevenueCat helpers in a later pass
-- if added, keep the bridge isolated so apps not using RevenueCat do not pay for that dependency
-
-Minimum docs requirement when RevenueCat support is added:
-
-- authenticated apps should use their real stable user ID for both RevenueCat `appUserID` and Jishu `externalUserId`
-- unauthenticated apps may use `Jishu.displayUserID`, but docs must warn about reinstall identity loss
-
-## Repo Bootstrap
-
-Suggested repo contents:
+## Suggested Repo Layout
 
 ```text
 settings.gradle.kts
 build.gradle.kts
 gradle.properties
 jishu/build.gradle.kts
+jishu/src/main/java/
+jishu/src/test/java/
+example-app/
 README.md
 LICENSE
-.gitignore
 ```
 
-Recommended publishing target:
+Android baseline:
 
-- Maven Central
+- `minSdk 24`
+- coroutines for async API
 
-This is the cleanest public-distribution path if the repo is separate and public.
+## Tests
 
-## README First Draft Sections
+Add tests covering:
 
-The separate public repo should start with these sections:
+- contact request serialization
+- success response handling
+- API error parsing from `{ error: "..." }`
+- missing configuration behavior
+- base URL validation
 
-1. What Jishu promo access is
+Suggested test files:
+
+```text
+jishu/src/test/java/io/jishu/sdk/
+  ContactRequestSerializationTest.kt
+  ContactRequestTest.kt
+```
+
+Use `MockWebServer` for request / response coverage.
+
+## README Sections
+
+The Kotlin repo README should include:
+
+1. What Jishu messaging is
 2. Installation
-3. Quickstart
-4. `displayUserID` and identity guidance
-5. Staging test example
-6. RevenueCat integration notes
-7. Reinstall limitation warning
-8. Security notes for API tokens
+3. Configure the SDK
+4. Send a contact message from a ViewModel
+5. Error handling
+6. Example app
+7. Optional note about promo access if it remains in the SDK
 
 ## First Milestone Checklist
 
-1. Create Gradle module and publishing skeleton
-2. Implement `configure`
-3. Implement persistent `displayUserID`
-4. Implement `checkAccess(externalUserId)`
-5. Decode live staging response
-6. Add unit tests for config validation and parsing
-7. Add a tiny sample app or README usage snippet
-
-## Staging Smoke Test Target
-
-Use the currently live staging environment:
-
-- base URL: `https://staging.jishu.page`
-
-Manual test flow:
-
-1. create an app in Jishu staging Promo access
-2. create a grant for either a `User ID` or `Phone ID`
-3. create an API token in Account → API access
-4. configure the SDK with staging base URL, token, and app ID
-5. call `checkAccess`
-
-Expected success shape:
-
-- `granted == true`
-- `matchType == MatchType.USER` or `MatchType.DEVICE`
-- `expiresAt != null`
-
-## Non-Goals For First Cut
-
-- Google Play Billing integration
-- Play Integrity
-- analytics
-- webhooks
-- background scheduled refresh
-- multi-process storage hardening
-
-## Open Decisions To Keep In Repo README
-
-- whether to keep `object Jishu` only or also expose an instance-based client later
-- whether RevenueCat helpers live in the main module or a companion module
-- whether to offer a Flow-based convenience wrapper in addition to the suspend API
+1. Update configuration model so messaging can work without an API token
+2. Add `ContactMessage`
+3. Add network request for `POST /api/apps/:appId/contact`
+4. Add `Jishu.sendContactMessage(...)`
+5. Add an Android example app with a working contact screen
+6. Add unit tests for serialization and error handling
+7. Update README quickstart for messaging

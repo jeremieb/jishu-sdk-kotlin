@@ -1,10 +1,12 @@
 package io.jishu.sdk.network
 
 import io.jishu.sdk.config.JishuConfig
+import io.jishu.sdk.contact.ContactMessage
 import io.jishu.sdk.logging.JishuLogger
 import io.jishu.sdk.model.AccessResult
 import io.jishu.sdk.network.dto.AccessResultDto
 import io.jishu.sdk.network.dto.CheckAccessRequest
+import io.jishu.sdk.network.dto.ContactRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -28,6 +30,52 @@ internal class JishuClient(private val config: JishuConfig) {
 
     private val endpoint = "${config.baseUrl}/api/v1/mobile/entitlements/check"
     private val mediaType = "application/json; charset=utf-8".toMediaType()
+
+    suspend fun sendContactMessage(message: ContactMessage) {
+        val requestDto = ContactRequest(
+            senderName = message.senderName,
+            senderEmail = message.senderEmail,
+            subject = message.subject,
+            body = message.body
+        )
+        val bodyJson = json.encodeToString(requestDto).toRequestBody(mediaType)
+        val url = "${config.baseUrl}/api/apps/${config.appId}/contact"
+        val request = Request.Builder()
+            .url(url)
+            .post(bodyJson)
+            .build()
+        JishuLogger.d("POST $url")
+        executeContactWithRetry(request)
+    }
+
+    private suspend fun executeContactWithRetry(request: Request, attempt: Int = 0) {
+        try {
+            val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
+            JishuLogger.d("Contact response ${response.code}")
+            when {
+                response.code in 200..299 -> return
+                response.code in 400..499 -> {
+                    val body = response.body?.string()
+                    throw JishuApiException("Server returned ${response.code}: $body")
+                }
+                attempt < 1 -> {
+                    JishuLogger.d("Transient contact error ${response.code}, retrying…")
+                    executeContactWithRetry(request, attempt + 1)
+                }
+                else -> {
+                    val body = response.body?.string()
+                    throw JishuApiException("Server returned ${response.code} after retry: $body")
+                }
+            }
+        } catch (e: IOException) {
+            if (attempt < 1) {
+                JishuLogger.d("Network error on contact, retrying: ${e.message}")
+                executeContactWithRetry(request, attempt + 1)
+            } else {
+                throw e
+            }
+        }
+    }
 
     suspend fun checkAccess(deviceId: String, externalUserId: String?): AccessResult {
         val requestDto = CheckAccessRequest(

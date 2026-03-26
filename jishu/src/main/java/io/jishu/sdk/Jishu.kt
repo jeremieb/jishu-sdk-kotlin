@@ -3,6 +3,7 @@ package io.jishu.sdk
 import android.content.Context
 import io.jishu.sdk.cache.AccessCache
 import io.jishu.sdk.config.JishuConfig
+import io.jishu.sdk.contact.ContactMessage
 import io.jishu.sdk.identity.DeviceIdStore
 import io.jishu.sdk.logging.JishuLogger
 import io.jishu.sdk.model.AccessResult
@@ -57,6 +58,20 @@ object Jishu {
     val displayUserID: String
         get() = deviceIdStore?.getOrCreate()
             ?: error("Jishu not configured. Call Jishu.configure() first.")
+
+    /**
+     * Submits a contact form message from the app user.
+     *
+     * The message is associated with the [appId] supplied to [configure].
+     * No API token is required — the endpoint is public and rate-limited by IP.
+     *
+     * @param message  The contact message to send.
+     * @throws IllegalStateException if [configure] has not been called.
+     */
+    suspend fun sendContactMessage(message: ContactMessage) {
+        val c = client ?: error("Jishu not configured. Call Jishu.configure() first.")
+        c.sendContactMessage(message)
+    }
 
     /**
      * Checks whether this device/user has an active promo access grant.
