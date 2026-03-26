@@ -1,6 +1,6 @@
 # Jishu Android SDK
 
-A lightweight Android library that checks [Jishu](https://jishu.page) promo access from native Android apps, with an optional bridge for RevenueCat entitlements.
+A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants and send contact form messages from native Android apps.
 
 - **Current version:** `0.1.0`
 - **Minimum SDK:** Android 7.0 (API 24)
@@ -13,13 +13,14 @@ A lightweight Android library that checks [Jishu](https://jishu.page) promo acce
 1. [What is Jishu promo access?](#what-is-jishu-promo-access)
 2. [Installation](#installation)
 3. [Quickstart](#quickstart)
-4. [User identity and `displayUserID`](#user-identity-and-displayuserid)
-5. [Staging smoke test](#staging-smoke-test)
-6. [RevenueCat integration](#revenuecat-integration)
-7. [Reinstall limitation](#reinstall-limitation)
-8. [Security notes](#security-notes)
-9. [Publishing a new version](#publishing-a-new-version)
-10. [Running the tests](#running-the-tests)
+4. [Contact form](#contact-form)
+5. [User identity and `displayUserID`](#user-identity-and-displayuserid)
+6. [Staging smoke test](#staging-smoke-test)
+7. [RevenueCat integration](#revenuecat-integration)
+8. [Reinstall limitation](#reinstall-limitation)
+9. [Security notes](#security-notes)
+10. [Publishing a new version](#publishing-a-new-version)
+11. [Running the tests](#running-the-tests)
 
 ---
 
@@ -125,6 +126,133 @@ val result = Jishu.checkAccess(externalUserId = currentUser.id)
 
 ---
 
+## Contact form
+
+`Jishu.sendContactMessage(message)` lets your users send a message directly to you from within your app. Messages land in the **User Messages** inbox in your Jishu dashboard, where you can read and reply via email.
+
+### Basic usage
+
+```kotlin
+viewModelScope.launch {
+    try {
+        Jishu.sendContactMessage(ContactMessage(
+            senderEmail = "jane@example.com",
+            body = "Hi, I have a question about my account."
+        ))
+        // Show a "Message sent!" confirmation
+    } catch (e: JishuApiException) {
+        when {
+            e.message?.contains("429") == true ->
+                // Rate limit hit — ask the user to wait before trying again
+            else ->
+                // Network error or validation failure
+        }
+    }
+}
+```
+
+### `ContactMessage` fields
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `senderEmail` | `String` | Yes | Must be a valid email address |
+| `body` | `String` | Yes | Max 5 000 characters |
+| `senderName` | `String?` | No | Displayed in the dashboard message list |
+| `subject` | `String?` | No | Shown as the message subject line |
+| `userId` | `String?` | No | Automatically filled with `Jishu.displayUserID` when `null`. Lets the app owner add this sender to a promo grant directly from the dashboard. |
+
+```kotlin
+// All fields
+val message = ContactMessage(
+    senderName  = "Jane Smith",
+    senderEmail = "jane@example.com",
+    subject     = "Question about my portfolio",
+    body        = "I noticed that my site is not loading correctly on Chrome..."
+    // userId is automatically filled with Jishu.displayUserID
+)
+Jishu.sendContactMessage(message)
+```
+
+### Rate limiting
+
+The endpoint is public (no API token required) and rate-limited to **10 messages per hour per IP address** per app. On limit hit, `JishuApiException` is thrown with a message containing `429`. Show a user-friendly message and do not retry automatically.
+
+### Errors
+
+| Condition | Thrown |
+|-----------|--------|
+| `configure` not called before sending | `IllegalStateException` |
+| Validation failed (missing email or body, value too long) | `JishuApiException` (HTTP 400) |
+| The `appId` does not exist or is inactive | `JishuApiException` (HTTP 404) |
+| Rate limit — more than 10 messages/hour from this IP | `JishuApiException` (HTTP 429) |
+| Server error — the SDK retries once automatically | `JishuApiException` (HTTP 500) |
+
+### Compose example
+
+```kotlin
+@Composable
+fun ContactFormScreen(viewModel: ContactFormViewModel = viewModel()) {
+    val uiState by viewModel.uiState.collectAsState()
+    var email by remember { mutableStateOf("") }
+    var body  by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Your email") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = body,
+            onValueChange = { body = it },
+            label = { Text("Message") },
+            minLines = 5,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = { viewModel.send(email, body) },
+            enabled = email.isNotBlank() && body.isNotBlank() && uiState !is UiState.Sending,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Send") }
+
+        when (val s = uiState) {
+            is UiState.Success -> Text("Message sent!", color = MaterialTheme.colorScheme.primary)
+            is UiState.Error   -> Text(s.message, color = MaterialTheme.colorScheme.error)
+            else -> Unit
+        }
+    }
+}
+
+class ContactFormViewModel : ViewModel() {
+    sealed class UiState { object Idle : UiState(); object Sending : UiState()
+        object Success : UiState(); data class Error(val message: String) : UiState() }
+
+    val uiState = MutableStateFlow<UiState>(UiState.Idle)
+
+    fun send(email: String, body: String) {
+        viewModelScope.launch {
+            uiState.value = UiState.Sending
+            try {
+                Jishu.sendContactMessage(ContactMessage(senderEmail = email, body = body))
+                uiState.value = UiState.Success
+            } catch (e: JishuApiException) {
+                val msg = if (e.message?.contains("429") == true)
+                    "Too many messages — please wait an hour and try again."
+                else
+                    "Could not send message. Please try again."
+                uiState.value = UiState.Error(msg)
+            }
+        }
+    }
+}
+```
+
+---
+
 ## User identity and `displayUserID`
 
 `Jishu.displayUserID` is a stable, device-scoped identifier automatically generated on first launch and persisted in `SharedPreferences`. You can use it as a device identity in the Jishu dashboard.
@@ -141,6 +269,18 @@ println(Jishu.displayUserID) // e.g. "550e8400-e29b-41d4-a716-446655440000"
 | Unauthenticated app or guest mode | Omit `externalUserId`; the SDK sends `displayUserID` automatically |
 
 Grants are matched on the server side against whichever identity you send. Mixing both identities in different calls for the same user can produce inconsistent results.
+
+**`displayUserID` and contact messages:**
+
+When a user submits a contact form, the SDK automatically includes their `displayUserID` as the `userId` field of the message. This lets you see the sender's Jishu identity directly in the **User Messages** dashboard and add them to a promo grant with one click — no copy-pasting required. If your app has its own auth system, pass an explicit `userId` to `ContactMessage` to use your stable user ID instead:
+
+```kotlin
+Jishu.sendContactMessage(ContactMessage(
+    senderEmail = "jane@example.com",
+    body = "Hi, I have a question.",
+    userId = currentUser.id   // override with your own stable ID
+))
+```
 
 ---
 
@@ -302,6 +442,7 @@ All tests should pass. The test suite covers:
 | `DeviceIdStoreTest` | UUID generation, persistence, no re-generation on second call |
 | `AccessCacheTest` | Cache hit/miss, expiry via `expiresAt`, 5-minute cap, clear |
 | `AccessResultParsingTest` | Full response, `matchType: none`, null fields, ISO 8601 dates |
+| `ContactTest` | 201 success, correct path, no auth header, 429 error, 500 retry, body encoding |
 
 ### Testing in your Android project (local library)
 

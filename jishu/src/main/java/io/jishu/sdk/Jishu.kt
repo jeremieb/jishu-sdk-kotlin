@@ -69,8 +69,9 @@ object Jishu {
      * @throws IllegalStateException if [configure] has not been called.
      */
     suspend fun sendContactMessage(message: ContactMessage) {
+        val store = deviceIdStore ?: error("Jishu not configured. Call Jishu.configure() first.")
         val c = client ?: error("Jishu not configured. Call Jishu.configure() first.")
-        c.sendContactMessage(message)
+        c.sendContactMessage(message, displayUserId = store.getOrCreate())
     }
 
     /**
