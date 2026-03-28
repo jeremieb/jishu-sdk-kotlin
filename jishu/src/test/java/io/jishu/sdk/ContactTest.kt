@@ -39,7 +39,7 @@ class ContactTest {
     @Test
     fun `sendContactMessage succeeds on 201`() = runTest {
         server.enqueue(MockResponse().setResponseCode(201).setBody("""{"ok":true}"""))
-        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"))
+        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"), displayUserId = "device-uuid")
         val recorded = server.takeRequest()
         assertEquals("POST", recorded.method)
     }
@@ -47,7 +47,7 @@ class ContactTest {
     @Test
     fun `sendContactMessage targets correct path`() = runTest {
         server.enqueue(MockResponse().setResponseCode(201))
-        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"))
+        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"), displayUserId = "device-uuid")
         val recorded = server.takeRequest()
         assertEquals("/api/apps/app_test/contact", recorded.path)
     }
@@ -55,7 +55,7 @@ class ContactTest {
     @Test
     fun `sendContactMessage has no Authorization header`() = runTest {
         server.enqueue(MockResponse().setResponseCode(201))
-        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"))
+        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"), displayUserId = "device-uuid")
         val recorded = server.takeRequest()
         assertNull(recorded.getHeader("Authorization"))
     }
@@ -63,14 +63,14 @@ class ContactTest {
     @Test(expected = JishuApiException::class)
     fun `sendContactMessage throws JishuApiException on 429`() = runTest {
         server.enqueue(MockResponse().setResponseCode(429).setBody("""{"error":"rate limited"}"""))
-        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"))
+        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"), displayUserId = "device-uuid")
     }
 
     @Test
     fun `sendContactMessage retries once on 500 then succeeds`() = runTest {
         server.enqueue(MockResponse().setResponseCode(500))
         server.enqueue(MockResponse().setResponseCode(201))
-        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"))
+        client.sendContactMessage(ContactMessage(senderEmail = "user@example.com", body = "Hello!"), displayUserId = "device-uuid")
         assertEquals(2, server.requestCount)
     }
 
@@ -83,7 +83,8 @@ class ContactTest {
                 senderEmail = "alice@example.com",
                 subject = "Hello",
                 body = "World"
-            )
+            ),
+            displayUserId = "device-uuid"
         )
         val recorded = server.takeRequest()
         val body = recorded.body.readUtf8()

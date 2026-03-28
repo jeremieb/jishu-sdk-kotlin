@@ -1,6 +1,6 @@
 # Jishu Android SDK
 
-A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants and send contact form messages from native Android apps.
+A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
 - **Current version:** `0.1.0`
 - **Minimum SDK:** Android 7.0 (API 24)
@@ -14,13 +14,14 @@ A lightweight Android library for [Jishu](https://jishu.page) — check promo ac
 2. [Installation](#installation)
 3. [Quickstart](#quickstart)
 4. [Contact form](#contact-form)
-5. [User identity and `displayUserID`](#user-identity-and-displayuserid)
-6. [Staging smoke test](#staging-smoke-test)
-7. [RevenueCat integration](#revenuecat-integration)
-8. [Reinstall limitation](#reinstall-limitation)
-9. [Security notes](#security-notes)
-10. [Publishing a new version](#publishing-a-new-version)
-11. [Running the tests](#running-the-tests)
+5. [Feature feedback](#feature-feedback)
+6. [User identity and `displayUserID`](#user-identity-and-displayuserid)
+7. [Staging smoke test](#staging-smoke-test)
+8. [RevenueCat integration](#revenuecat-integration)
+9. [Reinstall limitation](#reinstall-limitation)
+10. [Security notes](#security-notes)
+11. [Publishing a new version](#publishing-a-new-version)
+12. [Running the tests](#running-the-tests)
 
 ---
 
@@ -123,6 +124,12 @@ Pass your own user ID when the customer is signed in — this is the preferred m
 ```kotlin
 val result = Jishu.checkAccess(externalUserId = currentUser.id)
 ```
+
+### 3. Add the feedback feature
+
+Once the SDK is configured with your `appId`, you can call the feedback endpoints from any `ViewModel` or coroutine scope. The SDK automatically reuses the configured app and uses `Jishu.displayUserID` as the stable voter token.
+
+If you want to expose feature requests in your app UI, jump to the [Feature feedback](#feature-feedback) section below for a complete example.
 
 ---
 
@@ -252,6 +259,148 @@ class ContactFormViewModel : ViewModel() {
 ```
 
 ---
+
+
+
+## Feature feedback
+
+`Jishu.fetchProposals()`, `Jishu.submitProposal(...)`, and `Jishu.vote(...)` wrap the public feedback endpoints for the configured app. No API token is sent on these requests.
+
+### What you need before using it
+
+1. Call `Jishu.configure(...)` once at app startup.
+2. Use the same `appId` that is registered in your Jishu dashboard.
+3. Make sure the backend feedback routes are live for that app:
+   `GET /api/apps/:appId/proposals`
+   `POST /api/apps/:appId/proposals`
+   `POST /api/apps/:appId/proposals/:id/vote`
+
+### Basic usage
+
+```kotlin
+viewModelScope.launch {
+    val proposals = Jishu.fetchProposals()
+    val created = Jishu.submitProposal(
+        title = "Offline mode",
+        description = "Let me keep reading when I lose connection."
+    )
+    val updatedVoteCount = Jishu.vote(created.id)
+}
+```
+
+### Typical app integration
+
+The simplest integration is:
+
+1. Load proposals when the screen opens with `Jishu.fetchProposals()`.
+2. Submit a new idea with `Jishu.submitProposal(title, description)`.
+3. Update the vote count for an item with `Jishu.vote(proposalId)`.
+4. Store the result in your own screen state; the SDK does not manage UI state for you.
+
+### ViewModel example
+
+```kotlin
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import io.jishu.sdk.Jishu
+import io.jishu.sdk.feedback.Proposal
+import io.jishu.sdk.feedback.ProposalStatus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+class FeedbackViewModel : ViewModel() {
+
+    private val _proposals = MutableStateFlow<List<Proposal>>(emptyList())
+    val proposals = _proposals.asStateFlow()
+
+    val isLoading = MutableStateFlow(false)
+    val error = MutableStateFlow<String?>(null)
+
+    fun load(sort: String = "votes", status: ProposalStatus = ProposalStatus.OPEN) {
+        viewModelScope.launch {
+            isLoading.value = true
+            error.value = null
+            runCatching { Jishu.fetchProposals(sort = sort, status = status) }
+                .onSuccess { _proposals.value = it }
+                .onFailure { error.value = it.message ?: "Failed to load proposals" }
+            isLoading.value = false
+        }
+    }
+
+    fun submit(title: String, description: String?) {
+        viewModelScope.launch {
+            runCatching { Jishu.submitProposal(title = title, description = description) }
+                .onSuccess { created -> _proposals.update { listOf(created) + it } }
+                .onFailure { error.value = it.message ?: "Failed to submit proposal" }
+        }
+    }
+
+    fun vote(proposalId: String) {
+        viewModelScope.launch {
+            runCatching { Jishu.vote(proposalId) }
+                .onSuccess { updatedCount ->
+                    _proposals.update { list ->
+                        list.map { proposal ->
+                            if (proposal.id == proposalId) {
+                                proposal.copy(voteCount = updatedCount)
+                            } else {
+                                proposal
+                            }
+                        }
+                    }
+                }
+                .onFailure { error.value = it.message ?: "Failed to vote" }
+        }
+    }
+}
+```
+
+### Public API
+
+```kotlin
+suspend fun fetchProposals(
+    sort: String = "votes",
+    status: ProposalStatus = ProposalStatus.OPEN
+): List<Proposal>
+
+suspend fun submitProposal(
+    title: String,
+    description: String? = null
+): Proposal
+
+suspend fun vote(proposalId: String): Int
+```
+
+### Models
+
+| Type | Notes |
+|------|-------|
+| `Proposal` | `id`, `title`, `description`, `status`, `voteCount`, `createdAt` |
+| `ProposalStatus` | `OPEN`, `PLANNED`, `IN_PROGRESS`, `SHIPPED`, `REJECTED` |
+
+### Behavior notes
+
+- `submitProposal` and `vote` use `Jishu.displayUserID` as the stable `voter_token`.
+- The feedback endpoints are public and rate-limited by the backend.
+- Duplicate votes from the same device are ignored by the server.
+- The SDK retries once on transport failures or 5xx responses, matching the contact form behavior.
+- `fetchProposals()` defaults to `sort = "votes"` and `status = ProposalStatus.OPEN`, so shipped or rejected ideas must be requested explicitly.
+
+### Common errors
+
+| Condition | Thrown |
+|-----------|--------|
+| `configure` not called before use | `IllegalStateException` |
+| Invalid request or rate limit | `JishuApiException` (HTTP 4xx) |
+| Server error after one retry | `JishuApiException` |
+
+### Implementation notes
+
+- Use your own app state for loading, success, and error UI. The SDK only handles HTTP and model parsing.
+- Use `ProposalStatus.OPEN` for the public “vote on ideas” view, and request other statuses only if you want to show planned or shipped roadmap items.
+- Do not generate your own `voter_token`; the SDK already uses `Jishu.displayUserID` internally for submit and vote.
 
 ## User identity and `displayUserID`
 
