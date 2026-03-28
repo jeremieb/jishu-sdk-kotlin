@@ -171,6 +171,77 @@ internal class JishuClient(private val config: JishuConfig) {
         }
     }
 
+    suspend fun fetchProposals(
+        sort: String = "votes",
+        status: ProposalStatus = ProposalStatus.OPEN
+    ): List<Proposal> {
+        val url = "${config.baseUrl}/api/apps/${config.appId}/proposals".toHttpUrl().newBuilder()
+            .addQueryParameter("sort", sort)
+            .addQueryParameter("status", status.value)
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+        JishuLogger.d("GET $url")
+        return executeFeedbackWithRetry(request) { body ->
+            json.decodeFromString<ProposalListResponse>(body).proposals.map { it.toProposal() }
+        }
+    }
+
+    suspend fun submitProposal(title: String, description: String?, voterToken: String): Proposal {
+        val url = "${config.baseUrl}/api/apps/${config.appId}/proposals"
+        val bodyJson = json.encodeToString(SubmitProposalRequest(title, description, voterToken))
+            .toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url(url)
+            .post(bodyJson)
+            .build()
+        JishuLogger.d("POST $url")
+        return executeFeedbackWithRetry(request) { body ->
+            json.decodeFromString<ProposalResponse>(body).proposal.toProposal()
+        }
+    }
+
+    suspend fun vote(proposalId: String, voterToken: String): Int {
+        val encodedProposalId = URLEncoder.encode(proposalId, Charsets.UTF_8.name())
+        val url = "${config.baseUrl}/api/apps/${config.appId}/proposals/$encodedProposalId/vote"
+        val bodyJson = json.encodeToString(VoteRequest(voterToken)).toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url(url)
+            .post(bodyJson)
+            .build()
+        JishuLogger.d("POST $url")
+        return executeFeedbackWithRetry(request) { body ->
+            json.decodeFromString<VoteResponse>(body).voteCount
+        }
+    }
+
+    private suspend fun <T> executeFeedbackWithRetry(request: Request, attempt: Int = 0, parse: (String) -> T): T {
+        return try {
+            val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
+            val body = response.body?.string()
+            JishuLogger.d("Feedback response ${response.code}")
+
+            when {
+                response.isSuccessful && body != null -> parse(body)
+                response.code in 400..499 -> throw JishuApiException("Server returned ${response.code}: $body")
+                attempt < 1 -> {
+                    JishuLogger.d("Transient feedback error ${response.code}, retrying…")
+                    executeFeedbackWithRetry(request, attempt + 1, parse)
+                }
+                else -> throw JishuApiException("Server returned ${response.code} after retry: $body")
+            }
+        } catch (e: IOException) {
+            if (attempt < 1) {
+                JishuLogger.d("Network error on feedback, retrying: ${e.message}")
+                executeFeedbackWithRetry(request, attempt + 1, parse)
+            } else {
+                throw e
+            }
+        }
+    }
+
     suspend fun checkAccess(deviceId: String, externalUserId: String?): AccessResult {
         val requestDto = CheckAccessRequest(
             appId = config.appId,
