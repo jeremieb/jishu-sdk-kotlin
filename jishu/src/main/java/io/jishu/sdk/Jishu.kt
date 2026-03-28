@@ -4,6 +4,8 @@ import android.content.Context
 import io.jishu.sdk.cache.AccessCache
 import io.jishu.sdk.config.JishuConfig
 import io.jishu.sdk.contact.ContactMessage
+import io.jishu.sdk.feedback.Proposal
+import io.jishu.sdk.feedback.ProposalStatus
 import io.jishu.sdk.identity.DeviceIdStore
 import io.jishu.sdk.logging.JishuLogger
 import io.jishu.sdk.model.AccessResult
@@ -72,6 +74,46 @@ object Jishu {
         val store = deviceIdStore ?: error("Jishu not configured. Call Jishu.configure() first.")
         val c = client ?: error("Jishu not configured. Call Jishu.configure() first.")
         c.sendContactMessage(message, displayUserId = store.getOrCreate())
+    }
+
+    /**
+     * Fetch feature proposals for the configured app.
+     *
+     * @param sort   Either "votes" (default) or "recent".
+     * @param status Proposal status filter. Defaults to [ProposalStatus.OPEN].
+     * @throws IllegalStateException if [configure] has not been called.
+     */
+    suspend fun fetchProposals(
+        sort: String = "votes",
+        status: ProposalStatus = ProposalStatus.OPEN
+    ): List<Proposal> {
+        val c = client ?: error("Jishu not configured. Call Jishu.configure() first.")
+        return c.fetchProposals(sort = sort, status = status)
+    }
+
+    /**
+     * Submit a new feature proposal for the configured app.
+     *
+     * No authentication is required. The SDK uses [displayUserID] as the stable voter token.
+     *
+     * @throws IllegalStateException if [configure] has not been called.
+     */
+    suspend fun submitProposal(title: String, description: String? = null): Proposal {
+        val store = deviceIdStore ?: error("Jishu not configured. Call Jishu.configure() first.")
+        val c = client ?: error("Jishu not configured. Call Jishu.configure() first.")
+        return c.submitProposal(title = title, description = description, voterToken = store.getOrCreate())
+    }
+
+    /**
+     * Vote on a proposal for the configured app. Duplicate votes from the same device are ignored by the backend.
+     *
+     * @return The updated vote count.
+     * @throws IllegalStateException if [configure] has not been called.
+     */
+    suspend fun vote(proposalId: String): Int {
+        val store = deviceIdStore ?: error("Jishu not configured. Call Jishu.configure() first.")
+        val c = client ?: error("Jishu not configured. Call Jishu.configure() first.")
+        return c.vote(proposalId = proposalId, voterToken = store.getOrCreate())
     }
 
     /**
