@@ -131,6 +131,8 @@ Once the SDK is configured with your `appId`, you can call the feedback endpoint
 
 If you want to expose feature requests in your app UI, jump to the [Feature feedback](#feature-feedback) section below for a complete example.
 
+If you only want promo-access checks, you can stop after `checkAccess()`. The feedback API is optional and can be added screen-by-screen later.
+
 ---
 
 ## Contact form
