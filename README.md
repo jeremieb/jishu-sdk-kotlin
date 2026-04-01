@@ -1,5 +1,7 @@
 # Jishu Android SDK
 
+![github package](https://github.com/user-attachments/assets/e01c22ca-72bf-4474-bbfc-d262fdcf8bed)
+
 A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
 - **Current version:** `0.1.0`
