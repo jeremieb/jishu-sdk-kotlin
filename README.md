@@ -172,6 +172,8 @@ viewModelScope.launch {
 | `subject` | `String?` | No | Shown as the message subject line |
 | `userId` | `String?` | No | Automatically filled with `Jishu.displayUserID` when `null`. Lets the app owner add this sender to a promo grant directly from the dashboard. |
 
+The SDK automatically includes `platform: "android"` in every request. The Jishu dashboard displays an **Android** badge on each message so you can tell at a glance which platform the sender is on — no action required on your side.
+
 ```kotlin
 // All fields
 val message = ContactMessage(
