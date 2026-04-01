@@ -1,16 +1,21 @@
 package io.jishu.sdk.logging
 
 import android.util.Log
+import io.jishu.sdk.JishuDebugLevel
 
 internal object JishuLogger {
     private const val TAG = "JishuSDK"
-    var debugEnabled = false
+    var level: JishuDebugLevel = JishuDebugLevel.DEFAULT
 
-    fun d(message: String) {
-        if (debugEnabled) Log.d(TAG, message)
+    /** Logs an error message. Always printed in both DEFAULT and VERBOSE modes. */
+    fun error(message: String, throwable: Throwable? = null) {
+        Log.e(TAG, "‼️ Jishu - $message", throwable)
     }
 
-    fun e(message: String, throwable: Throwable? = null) {
-        Log.e(TAG, message, throwable)
+    /** Logs a verbose message. Only printed in VERBOSE mode. */
+    fun verbose(message: String) {
+        if (level == JishuDebugLevel.VERBOSE) {
+            Log.d(TAG, "📱 Jishu - $message")
+        }
     }
 }

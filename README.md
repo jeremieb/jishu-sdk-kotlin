@@ -182,6 +182,10 @@ val message = ContactMessage(
 Jishu.sendContactMessage(message)
 ```
 
+### Input sanitization
+
+The SDK automatically trims leading and trailing whitespace from all string fields before sending. Optional fields (`senderName`, `subject`) are treated as absent if they are blank after trimming, so you do not need to sanitize `ContactMessage` values before passing them in.
+
 ### Rate limiting
 
 The endpoint is public (no API token required) and rate-limited to **10 messages per hour per IP address** per app. On limit hit, `JishuApiException` is thrown with a message containing `429`. Show a user-friendly message and do not retry automatically.
@@ -384,7 +388,7 @@ suspend fun vote(proposalId: String): Int
 
 ### Behavior notes
 
-- `submitProposal` and `vote` use `Jishu.displayUserID` as the stable `voter_token`.
+- `submitProposal` and `vote` use a stable device-scoped voter token that is generated separately from `displayUserID` and persisted in `SharedPreferences` under the key `voter_token`.
 - The feedback endpoints are public and rate-limited by the backend.
 - Duplicate votes from the same device are ignored by the server.
 - The SDK retries once on transport failures or 5xx responses, matching the contact form behavior.
@@ -402,7 +406,7 @@ suspend fun vote(proposalId: String): Int
 
 - Use your own app state for loading, success, and error UI. The SDK only handles HTTP and model parsing.
 - Use `ProposalStatus.OPEN` for the public “vote on ideas” view, and request other statuses only if you want to show planned or shipped roadmap items.
-- Do not generate your own `voter_token`; the SDK already uses `Jishu.displayUserID` internally for submit and vote.
+- Do not generate or pass your own `voter_token`; the SDK manages its own stable voter token internally and sends it automatically on `submitProposal` and `vote` calls.
 
 ## User identity and `displayUserID`
 
@@ -454,7 +458,7 @@ Jishu.configure(
     apiToken = "YOUR_API_TOKEN",
     appId = "YOUR_APP_ID",
     environment = "production",
-    enableDebugLogs = true  // prints request/response info to Logcat under tag "JishuSDK"
+    debugLevel = JishuDebugLevel.VERBOSE  // prints request/response info to Logcat under tag "JishuSDK"
 )
 ```
 

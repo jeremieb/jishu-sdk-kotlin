@@ -21,7 +21,7 @@ internal data class AccessResultDto(
             "device" -> MatchType.DEVICE
             else -> MatchType.NONE
         },
-        expiresAt = expiresAt?.let { Instant.parse(it) },
+        expiresAt = expiresAt?.takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it) },
         serverTime = Instant.parse(serverTime)
     )
 }
