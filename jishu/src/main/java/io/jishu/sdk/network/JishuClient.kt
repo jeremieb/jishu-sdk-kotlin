@@ -42,10 +42,10 @@ internal class JishuClient(private val config: JishuConfig) {
 
     suspend fun sendContactMessage(message: ContactMessage, displayUserId: String) {
         val requestDto = ContactRequest(
-            senderName = message.senderName,
-            senderEmail = message.senderEmail,
-            subject = message.subject,
-            body = message.body,
+            senderName = message.senderName?.trim()?.takeIf { it.isNotEmpty() },
+            senderEmail = message.senderEmail.trim(),
+            subject = message.subject?.trim()?.takeIf { it.isNotEmpty() },
+            body = message.body.trim(),
             userId = message.userId ?: displayUserId
         )
         val bodyJson = json.encodeToString(requestDto).toRequestBody(mediaType)
@@ -54,34 +54,37 @@ internal class JishuClient(private val config: JishuConfig) {
             .url(url)
             .post(bodyJson)
             .build()
-        JishuLogger.d("POST $url")
+        JishuLogger.verbose("POST $url")
         executeContactWithRetry(request)
     }
 
     private suspend fun executeContactWithRetry(request: Request, attempt: Int = 0) {
         try {
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
-            JishuLogger.d("Contact response ${response.code}")
+            JishuLogger.verbose("Contact response ${response.code}")
             when {
                 response.code in 200..299 -> return
                 response.code in 400..499 -> {
                     val body = response.body?.string()
+                    JishuLogger.error("Contact HTTP error ${response.code} — ${request.url}")
                     throw JishuApiException("Server returned ${response.code}: $body")
                 }
                 attempt < 1 -> {
-                    JishuLogger.d("Transient contact error ${response.code}, retrying…")
+                    JishuLogger.error("Contact server error ${response.code}, retrying…")
                     executeContactWithRetry(request, attempt + 1)
                 }
                 else -> {
                     val body = response.body?.string()
+                    JishuLogger.error("Contact server error ${response.code} — no retries left")
                     throw JishuApiException("Server returned ${response.code} after retry: $body")
                 }
             }
         } catch (e: IOException) {
             if (attempt < 1) {
-                JishuLogger.d("Network error on contact, retrying: ${e.message}")
+                JishuLogger.error("Contact transport error, retrying: ${e.message}")
                 executeContactWithRetry(request, attempt + 1)
             } else {
+                JishuLogger.error("Contact transport error: ${e.message}")
                 throw e
             }
         }
@@ -99,7 +102,7 @@ internal class JishuClient(private val config: JishuConfig) {
             .url(url)
             .get()
             .build()
-        JishuLogger.d("GET $url")
+        JishuLogger.verbose("GET $url")
         return executeFeedbackWithRetry(request) { body ->
             json.decodeFromString<ProposalListResponse>(body).proposals.map { it.toProposal() }
         }
@@ -113,7 +116,7 @@ internal class JishuClient(private val config: JishuConfig) {
             .url(url)
             .post(bodyJson)
             .build()
-        JishuLogger.d("POST $url")
+        JishuLogger.verbose("POST $url")
         return executeFeedbackWithRetry(request) { body ->
             json.decodeFromString<ProposalResponse>(body).proposal.toProposal()
         }
@@ -127,7 +130,7 @@ internal class JishuClient(private val config: JishuConfig) {
             .url(url)
             .post(bodyJson)
             .build()
-        JishuLogger.d("POST $url")
+        JishuLogger.verbose("POST $url")
         return executeFeedbackWithRetry(request) { body ->
             json.decodeFromString<VoteResponse>(body).voteCount
         }
@@ -137,22 +140,29 @@ internal class JishuClient(private val config: JishuConfig) {
         return try {
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
             val body = response.body?.string()
-            JishuLogger.d("Feedback response ${response.code}")
+            JishuLogger.verbose("Feedback response ${response.code}")
 
             when {
                 response.isSuccessful && body != null -> parse(body)
-                response.code in 400..499 -> throw JishuApiException("Server returned ${response.code}: $body")
+                response.code in 400..499 -> {
+                    JishuLogger.error("HTTP error ${response.code} — ${request.url}")
+                    throw JishuApiException("Server returned ${response.code}: $body")
+                }
                 attempt < 1 -> {
-                    JishuLogger.d("Transient feedback error ${response.code}, retrying…")
+                    JishuLogger.error("Server error ${response.code}, retrying…")
                     executeFeedbackWithRetry(request, attempt + 1, parse)
                 }
-                else -> throw JishuApiException("Server returned ${response.code} after retry: $body")
+                else -> {
+                    JishuLogger.error("Server error ${response.code} — no retries left")
+                    throw JishuApiException("Server returned ${response.code} after retry: $body")
+                }
             }
         } catch (e: IOException) {
             if (attempt < 1) {
-                JishuLogger.d("Network error on feedback, retrying: ${e.message}")
+                JishuLogger.error("Transport error, retrying: ${e.message}")
                 executeFeedbackWithRetry(request, attempt + 1, parse)
             } else {
+                JishuLogger.error("Transport error: ${e.message}")
                 throw e
             }
         }
@@ -174,7 +184,7 @@ internal class JishuClient(private val config: JishuConfig) {
             .post(body)
             .build()
 
-        JishuLogger.d("POST $endpoint appId=${config.appId}")
+        JishuLogger.verbose("POST $endpoint appId=${config.appId}")
 
         return executeWithRetry(request)
     }
@@ -183,7 +193,7 @@ internal class JishuClient(private val config: JishuConfig) {
         return try {
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
             val responseBody = response.body?.string()
-            JishuLogger.d("Response ${response.code}")
+            JishuLogger.verbose("Response ${response.code}")
 
             when {
                 response.isSuccessful && responseBody != null -> {
@@ -191,19 +201,24 @@ internal class JishuClient(private val config: JishuConfig) {
                     dto.toAccessResult()
                 }
                 response.code in 400..499 -> {
+                    JishuLogger.error("HTTP error ${response.code} — ${request.url}")
                     throw JishuApiException("Server returned ${response.code}: $responseBody")
                 }
                 attempt < 1 -> {
-                    JishuLogger.d("Transient error ${response.code}, retrying…")
+                    JishuLogger.error("Server error ${response.code}, retrying…")
                     executeWithRetry(request, attempt + 1)
                 }
-                else -> throw JishuApiException("Server returned ${response.code} after retry: $responseBody")
+                else -> {
+                    JishuLogger.error("Server error ${response.code} — no retries left")
+                    throw JishuApiException("Server returned ${response.code} after retry: $responseBody")
+                }
             }
         } catch (e: IOException) {
             if (attempt < 1) {
-                JishuLogger.d("Network error, retrying: ${e.message}")
+                JishuLogger.error("Transport error, retrying: ${e.message}")
                 executeWithRetry(request, attempt + 1)
             } else {
+                JishuLogger.error("Transport error: ${e.message}")
                 throw e
             }
         }
