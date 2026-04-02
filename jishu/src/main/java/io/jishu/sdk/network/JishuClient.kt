@@ -61,24 +61,26 @@ internal class JishuClient(private val config: JishuConfig) {
     private suspend fun executeContactWithRetry(request: Request, attempt: Int = 0) {
         try {
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
-            JishuLogger.verbose("Contact response ${response.code}")
-            when {
-                response.code in 200..299 -> return
-                response.code in 400..499 -> {
-                    val body = response.body?.string()
-                    JishuLogger.error("Contact HTTP error ${response.code} — ${request.url}")
-                    throw JishuApiException("Server returned ${response.code}: $body")
-                }
-                attempt < 1 -> {
-                    JishuLogger.error("Contact server error ${response.code}, retrying…")
-                    executeContactWithRetry(request, attempt + 1)
-                }
-                else -> {
-                    val body = response.body?.string()
-                    JishuLogger.error("Contact server error ${response.code} — no retries left")
-                    throw JishuApiException("Server returned ${response.code} after retry: $body")
+            response.use {
+                JishuLogger.verbose("Contact response ${it.code}")
+                when {
+                    it.code in 200..299 -> return
+                    it.code in 400..499 -> {
+                        val body = it.body?.string()
+                        JishuLogger.error("Contact HTTP error ${it.code} — ${request.url}")
+                        throw JishuApiException("Server returned ${it.code}: $body")
+                    }
+                    attempt < 1 -> {
+                        JishuLogger.error("Contact server error ${it.code}, retrying…")
+                    }
+                    else -> {
+                        val body = it.body?.string()
+                        JishuLogger.error("Contact server error ${it.code} — no retries left")
+                        throw JishuApiException("Server returned ${it.code} after retry: $body")
+                    }
                 }
             }
+            executeContactWithRetry(request, attempt + 1)
         } catch (e: IOException) {
             if (attempt < 1) {
                 JishuLogger.error("Contact transport error, retrying: ${e.message}")
