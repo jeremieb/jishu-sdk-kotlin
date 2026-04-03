@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     `maven-publish`
+    `signing`
 }
 
 android {
@@ -67,6 +68,40 @@ publishing {
             afterEvaluate {
                 from(components["release"])
             }
+
+            pom {
+                name.set("Jishu Android SDK")
+                description.set("Android SDK for Jishu — check promo access grants, send contact messages, and collect feature proposals from native Android apps.")
+                url.set("https://github.com/jeremieb/jishu-sdk-kotlin")
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
+                    }
+                }
+                developers {
+                    developer {
+                        id.set("jeremieb")
+                        name.set("Jeremie Berduck")
+                        email.set("jeremieberduck@gmail.com")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:git://github.com/jeremieb/jishu-sdk-kotlin.git")
+                    developerConnection.set("scm:git:ssh://github.com/jeremieb/jishu-sdk-kotlin.git")
+                    url.set("https://github.com/jeremieb/jishu-sdk-kotlin")
+                }
+            }
         }
     }
 }
+
+signing {
+    val keyId = findProperty("signing.keyId") as String? ?: ""
+    val keyFile = findProperty("signing.keyFile") as String? ?: ""
+    val password = findProperty("signing.password") as String? ?: ""
+    val key = if (keyFile.isNotEmpty()) file(keyFile).readText() else ""
+    useInMemoryPgpKeys(keyId, key, password)
+    sign(publishing.publications["release"])
+}
+
