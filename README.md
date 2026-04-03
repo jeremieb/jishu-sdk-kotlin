@@ -4,7 +4,7 @@
 
 A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
-- **Current version:** `0.1.0`
+- **Current version:** `0.1.4`
 - **Minimum SDK:** Android 7.0 (API 24)
 - **Kotlin:** 2.0+
 
@@ -41,7 +41,7 @@ Add the dependency to your app or module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("io.jishu:jishu-android:0.1.0")
+    implementation("page.jishu:jishu-android:0.1.4")
 }
 ```
 
@@ -49,7 +49,7 @@ Or in Groovy `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'io.jishu:jishu-android:0.1.0'
+    implementation 'page.jishu:jishu-android:0.1.4'
 }
 ```
 
@@ -564,8 +564,8 @@ The library is versioned via **git tags**. Use full three-part semantic versioni
 ### Tag and push
 
 ```bash
-git tag 0.1.0
-git push origin 0.1.0
+git tag 0.1.4
+git push origin 0.1.4
 ```
 
 Or push all local tags at once:
