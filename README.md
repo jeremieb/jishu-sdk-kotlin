@@ -108,7 +108,7 @@ Register it in `AndroidManifest.xml`:
 
 ### 2. Check access
 
-Call `checkAccess` from a coroutine or `viewModelScope`. The call is safe to make on every screen load — positive results are cached for up to 5 minutes.
+Call `checkAccess` from a coroutine or `viewModelScope`. The call is safe to make on every screen load — positive results are cached for up to 30 minutes.
 
 ```kotlin
 import io.jishu.sdk.Jishu
@@ -171,6 +171,8 @@ viewModelScope.launch {
 | `senderName` | `String?` | No | Displayed in the dashboard message list |
 | `subject` | `String?` | No | Shown as the message subject line |
 | `userId` | `String?` | No | Automatically filled with `Jishu.displayUserID` when `null`. Lets the app owner add this sender to a promo grant directly from the dashboard. |
+
+The SDK automatically includes `platform: "android"` in every request. The Jishu dashboard displays an **Android** badge on each message so you can tell at a glance which platform the sender is on — no action required on your side.
 
 ```kotlin
 // All fields
@@ -597,7 +599,7 @@ All tests should pass. The test suite covers:
 |---|---|
 | `JishuClientTest` | 200 success, 401 no-retry, 500 retry-then-succeed, request shape |
 | `DeviceIdStoreTest` | UUID generation, persistence, no re-generation on second call |
-| `AccessCacheTest` | Cache hit/miss, expiry via `expiresAt`, 5-minute cap, clear |
+| `AccessCacheTest` | Cache hit/miss, expiry via `expiresAt`, 30-minute cap, clear |
 | `AccessResultParsingTest` | Full response, `matchType: none`, null fields, ISO 8601 dates |
 | `ContactTest` | 201 success, correct path, no auth header, 429 error, 500 retry, body encoding |
 
