@@ -124,7 +124,7 @@ object Jishu {
     /**
      * Checks whether this device/user has an active promo access grant.
      *
-     * Results are cached for up to 5 minutes (or until the grant expires).
+     * Results are cached for up to 30 minutes (or until the grant expires).
      * Negative results are never cached.
      *
      * @param externalUserId  Your authenticated user's stable ID. Pass null to

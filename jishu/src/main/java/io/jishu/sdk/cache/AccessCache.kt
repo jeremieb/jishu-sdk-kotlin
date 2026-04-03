@@ -5,7 +5,7 @@ import java.time.Instant
 
 internal class AccessCache {
 
-    private val maxTtlMs = 5 * 60 * 1000L  // 5 minutes
+    private val maxTtlMs = 30 * 60 * 1000L  // 30 minutes
 
     private data class Entry(val result: AccessResult, val fetchedAtMs: Long)
 
