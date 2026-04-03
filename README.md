@@ -35,8 +35,6 @@ Jishu promo access lets you grant specific users or devices early or exclusive a
 
 ## Installation
 
-### Gradle (once published to Maven Central)
-
 Add the dependency to your app or module `build.gradle.kts`:
 
 ```kotlin
@@ -64,15 +62,17 @@ dependencyResolutionManagement {
 }
 ```
 
-### Local development (before Maven Central)
+Sync your project and you're ready to call `Jishu.configure(...)`.
 
-Build and install the library to your local Maven cache:
+### Local development
+
+To build and test against a local snapshot before publishing:
 
 ```bash
 ./gradlew :jishu:publishToMavenLocal
 ```
 
-Then add `mavenLocal()` **before** `mavenCentral()` in your app's `settings.gradle.kts`, and use the same dependency coordinate above.
+Then add `mavenLocal()` **before** `mavenCentral()` in your app's `settings.gradle.kts`.
 
 ---
 
