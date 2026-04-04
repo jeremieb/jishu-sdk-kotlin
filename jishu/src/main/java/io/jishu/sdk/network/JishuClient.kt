@@ -46,7 +46,8 @@ internal class JishuClient(private val config: JishuConfig) {
             senderEmail = message.senderEmail.trim(),
             subject = message.subject?.trim()?.takeIf { it.isNotEmpty() },
             body = message.body.trim(),
-            userId = message.userId ?: displayUserId
+            userId = message.userId ?: displayUserId,
+            platform = "android"
         )
         val bodyJson = json.encodeToString(requestDto).toRequestBody(mediaType)
         val url = "${config.baseUrl}/api/apps/${config.appId}/contact"
