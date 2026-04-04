@@ -9,5 +9,5 @@ internal data class ContactRequest(
     val subject: String? = null,
     val body: String,
     val userId: String? = null,
-    val platform: String = "android"
+    val platform: String
 )
