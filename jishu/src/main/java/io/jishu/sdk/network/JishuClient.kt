@@ -4,6 +4,7 @@ import io.jishu.sdk.config.JishuConfig
 import io.jishu.sdk.contact.ContactMessage
 import io.jishu.sdk.feedback.Proposal
 import io.jishu.sdk.feedback.ProposalStatus
+import io.jishu.sdk.identity.collectDeviceMetaInfo
 import io.jishu.sdk.logging.JishuLogger
 import io.jishu.sdk.model.AccessResult
 import io.jishu.sdk.network.dto.AccessResultDto
@@ -41,13 +42,17 @@ internal class JishuClient(private val config: JishuConfig) {
     private val mediaType = "application/json; charset=utf-8".toMediaType()
 
     suspend fun sendContactMessage(message: ContactMessage, displayUserId: String) {
+        val meta = collectDeviceMetaInfo()
         val requestDto = ContactRequest(
             senderName = message.senderName?.trim()?.takeIf { it.isNotEmpty() },
             senderEmail = message.senderEmail.trim(),
             subject = message.subject?.trim()?.takeIf { it.isNotEmpty() },
             body = message.body.trim(),
             userId = message.userId ?: displayUserId,
-            platform = "android"
+            platform = "android",
+            osName = meta.osName,
+            osVersion = meta.osVersion,
+            deviceName = meta.deviceName,
         )
         val bodyJson = json.encodeToString(requestDto).toRequestBody(mediaType)
         val url = "${config.baseUrl}/api/apps/${config.appId}/contact"
@@ -95,7 +100,7 @@ internal class JishuClient(private val config: JishuConfig) {
 
     suspend fun fetchProposals(
         sort: String = "votes",
-        status: ProposalStatus = ProposalStatus.OPEN
+        status: ProposalStatus = ProposalStatus.OPEN,
     ): List<Proposal> {
         val url = "${config.baseUrl}/api/apps/${config.appId}/proposals".toHttpUrl().newBuilder()
             .addQueryParameter("sort", sort)
@@ -113,8 +118,17 @@ internal class JishuClient(private val config: JishuConfig) {
 
     suspend fun submitProposal(title: String, description: String?, voterToken: String): Proposal {
         val url = "${config.baseUrl}/api/apps/${config.appId}/proposals"
-        val bodyJson = json.encodeToString(SubmitProposalRequest(title, description, voterToken))
-            .toRequestBody(mediaType)
+        val meta = collectDeviceMetaInfo()
+        val bodyJson = json.encodeToString(
+            SubmitProposalRequest(
+                title = title,
+                description = description,
+                voterToken = voterToken,
+                osName = meta.osName,
+                osVersion = meta.osVersion,
+                deviceName = meta.deviceName,
+            ),
+        ).toRequestBody(mediaType)
         val request = Request.Builder()
             .url(url)
             .post(bodyJson)
@@ -128,7 +142,15 @@ internal class JishuClient(private val config: JishuConfig) {
     suspend fun vote(proposalId: String, voterToken: String): Int {
         val encodedProposalId = URLEncoder.encode(proposalId, Charsets.UTF_8.name())
         val url = "${config.baseUrl}/api/apps/${config.appId}/proposals/$encodedProposalId/vote"
-        val bodyJson = json.encodeToString(VoteRequest(voterToken)).toRequestBody(mediaType)
+        val meta = collectDeviceMetaInfo()
+        val bodyJson = json.encodeToString(
+            VoteRequest(
+                voterToken = voterToken,
+                osName = meta.osName,
+                osVersion = meta.osVersion,
+                deviceName = meta.deviceName,
+            ),
+        ).toRequestBody(mediaType)
         val request = Request.Builder()
             .url(url)
             .post(bodyJson)
@@ -139,7 +161,11 @@ internal class JishuClient(private val config: JishuConfig) {
         }
     }
 
-    private suspend fun <T> executeFeedbackWithRetry(request: Request, attempt: Int = 0, parse: (String) -> T): T {
+    private suspend fun <T> executeFeedbackWithRetry(
+        request: Request,
+        attempt: Int = 0,
+        parse: (String) -> T,
+    ): T {
         return try {
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
             val body = response.body?.string()
@@ -177,7 +203,7 @@ internal class JishuClient(private val config: JishuConfig) {
             platform = "android",
             externalUserId = externalUserId,
             deviceId = deviceId,
-            environment = config.environment
+            environment = config.environment,
         )
 
         val body = json.encodeToString(requestDto).toRequestBody(mediaType)

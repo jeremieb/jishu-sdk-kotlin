@@ -4,7 +4,7 @@
 
 A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
-- **Current version:** `0.1.5`
+- **Current version:** `0.1.6`
 - **Minimum SDK:** Android 7.0 (API 24)
 - **Kotlin:** 2.0+
 
@@ -18,11 +18,10 @@ A lightweight Android library for [Jishu](https://jishu.page) — check promo ac
 4. [Contact form](#contact-form)
 5. [Feature feedback](#feature-feedback)
 6. [User identity and `displayUserID`](#user-identity-and-displayuserid)
-7. [Staging smoke test](#staging-smoke-test)
-8. [RevenueCat integration](#revenuecat-integration)
-9. [Reinstall limitation](#reinstall-limitation)
-10. [Security notes](#security-notes)
-11. [Publishing a new version](#publishing-a-new-version)
+7. [RevenueCat integration](#revenuecat-integration)
+8. [Reinstall limitation](#reinstall-limitation)
+9. [Security notes](#security-notes)
+10. [Publishing a new version](#publishing-a-new-version)
 12. [Running the tests](#running-the-tests)
 
 ---
@@ -39,7 +38,7 @@ Add the dependency to your app or module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("page.jishu:jishu-android:0.1.5")
+    implementation("page.jishu:jishu-android:0.1.6")
 }
 ```
 
@@ -47,7 +46,7 @@ Or in Groovy `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'page.jishu:jishu-android:0.1.5'
+    implementation 'page.jishu:jishu-android:0.1.6'
 }
 ```
 
@@ -172,7 +171,7 @@ viewModelScope.launch {
 | `subject` | `String?` | No | Shown as the message subject line |
 | `userId` | `String?` | No | Automatically filled with `Jishu.displayUserID` when `null`. Lets the app owner add this sender to a promo grant directly from the dashboard. |
 
-The SDK automatically includes `platform: "android"` in every request. The Jishu dashboard displays an **Android** badge on each message so you can tell at a glance which platform the sender is on — no action required on your side.
+The SDK automatically includes `platform: "android"`, `osName`, `osVersion`, and `deviceName` in every contact message request. `deviceName` carries the raw Android model string such as `Pixel 9 Pro`; the Jishu backend resolves that into the dashboard display name if you customize mappings there. The Jishu dashboard also displays an **Android** badge on each message so you can tell at a glance which platform the sender is on — no action required on your side.
 
 ```kotlin
 // All fields
@@ -298,6 +297,14 @@ viewModelScope.launch {
 }
 ```
 
+The feedback endpoints send these metadata fields automatically:
+
+- `osName` — always `Android`
+- `osVersion` — for example `15`
+- `deviceName` — raw Android model string such as `Pixel 9 Pro`
+
+The Jishu backend resolves `deviceName` for dashboard display, so the SDK does not bundle a local device-name lookup table.
+
 ### Typical app integration
 
 The simplest integration is:
@@ -393,6 +400,7 @@ suspend fun vote(proposalId: String): Int
 ### Behavior notes
 
 - `submitProposal` and `vote` use a stable device-scoped voter token that is generated separately from `displayUserID` and persisted in `SharedPreferences` under the key `voter_token`.
+- Proposal submissions and votes include `osName`, `osVersion`, and the raw Android model string in `deviceName`.
 - The feedback endpoints are public and rate-limited by the backend.
 - Duplicate votes from the same device are ignored by the server.
 - The SDK retries once on transport failures or 5xx responses, matching the contact form behavior.
@@ -442,46 +450,6 @@ Jishu.sendContactMessage(ContactMessage(
 ```
 
 ---
-
-## Staging smoke test
-
-Use this flow to verify the SDK works end-to-end against the live staging environment before shipping to production.
-
-### Prerequisites
-
-1. Create an app in the Jishu staging dashboard at `https://staging.jishu.page`.
-2. Create a promo grant for a **User ID** or **Phone ID** in the app's Promo Access section.
-3. Create an API token under **Account → API Access**.
-
-### Configure for staging
-
-```kotlin
-Jishu.configure(
-    context = this,
-    baseUrl = "https://jishu.page",
-    apiToken = "YOUR_API_TOKEN",
-    appId = "YOUR_APP_ID",
-    environment = "production",
-    debugLevel = JishuDebugLevel.VERBOSE  // prints request/response info to Logcat under tag "JishuSDK"
-)
-```
-
-### Call `checkAccess`
-
-```kotlin
-val result = Jishu.checkAccess(externalUserId = "the_user_id_you_granted")
-println(result.granted)    // true
-println(result.matchType)  // MatchType.USER
-println(result.expiresAt)  // Instant?
-```
-
-Expected successful response shape:
-
-```
-granted    = true
-matchType  = MatchType.USER  (or MatchType.DEVICE)
-expiresAt  ≠ null
-```
 
 ---
 
@@ -564,8 +532,8 @@ The library is versioned via **git tags**. Use full three-part semantic versioni
 ### Tag and push
 
 ```bash
-git tag 0.1.5
-git push origin 0.1.5
+git tag 0.1.6
+git push origin 0.1.6
 ```
 
 Or push all local tags at once:
@@ -613,6 +581,6 @@ While developing, you can point your app at the local library instead of the pub
 
 To switch back to the published version later, remove `mavenLocal()` and re-sync.
 
-### Integration test against staging
+### Integration test against a real device
 
-Follow the [Staging smoke test](#staging-smoke-test) section above. Configure the SDK with `enableDebugLogs = true` and filter Logcat by the tag `JishuSDK` to see the full request/response cycle.
+Configure the SDK with `debugLevel = JishuDebugLevel.VERBOSE` and filter Logcat by the tag `JishuSDK` to see the full request/response cycle.

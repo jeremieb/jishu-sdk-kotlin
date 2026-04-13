@@ -44,9 +44,15 @@ internal data class SubmitProposalRequest(
     val title: String,
     val description: String? = null,
     @SerialName("voter_token") val voterToken: String,
+    @SerialName("osName") val osName: String? = null,
+    @SerialName("osVersion") val osVersion: String? = null,
+    @SerialName("deviceName") val deviceName: String? = null,
 )
 
 @Serializable
 internal data class VoteRequest(
     @SerialName("voter_token") val voterToken: String,
+    @SerialName("osName") val osName: String? = null,
+    @SerialName("osVersion") val osVersion: String? = null,
+    @SerialName("deviceName") val deviceName: String? = null,
 )

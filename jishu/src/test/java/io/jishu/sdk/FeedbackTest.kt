@@ -111,6 +111,9 @@ class FeedbackTest {
         assertTrue(body.contains("\"title\":\"Dark mode\""))
         assertTrue(body.contains("\"description\":\"Please add dark mode.\""))
         assertTrue(body.contains("\"voter_token\":\"device-uuid\""))
+        assertTrue(body.contains("\"osName\":"))
+        assertTrue(body.contains("\"osVersion\":"))
+        assertTrue(body.contains("\"deviceName\":"))
         assertEquals("prop_123", result.id)
     }
 
@@ -130,6 +133,9 @@ class FeedbackTest {
         assertEquals("/api/apps/app_test/proposals/prop_123/vote", recorded.path)
         assertNull(recorded.getHeader("Authorization"))
         assertTrue(body.contains("\"voter_token\":\"device-uuid\""))
+        assertTrue(body.contains("\"osName\":"))
+        assertTrue(body.contains("\"osVersion\":"))
+        assertTrue(body.contains("\"deviceName\":"))
         assertEquals(7, voteCount)
     }
 
