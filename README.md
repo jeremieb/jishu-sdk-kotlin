@@ -4,7 +4,7 @@
 
 A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
-- **Current version:** `0.1.5`
+- **Current version:** `0.1.6`
 - **Minimum SDK:** Android 7.0 (API 24)
 - **Kotlin:** 2.0+
 
@@ -38,7 +38,7 @@ Add the dependency to your app or module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("page.jishu:jishu-android:0.1.5")
+    implementation("page.jishu:jishu-android:0.1.6")
 }
 ```
 
@@ -46,7 +46,7 @@ Or in Groovy `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'page.jishu:jishu-android:0.1.5'
+    implementation 'page.jishu:jishu-android:0.1.6'
 }
 ```
 
@@ -171,7 +171,7 @@ viewModelScope.launch {
 | `subject` | `String?` | No | Shown as the message subject line |
 | `userId` | `String?` | No | Automatically filled with `Jishu.displayUserID` when `null`. Lets the app owner add this sender to a promo grant directly from the dashboard. |
 
-The SDK automatically includes `platform: "android"` in every request. The Jishu dashboard displays an **Android** badge on each message so you can tell at a glance which platform the sender is on — no action required on your side.
+The SDK automatically includes `platform: "android"`, `osName`, `osVersion`, and `deviceName` in every contact message request. `deviceName` carries the raw Android model string such as `Pixel 9 Pro`; the Jishu backend resolves that into the dashboard display name if you customize mappings there. The Jishu dashboard also displays an **Android** badge on each message so you can tell at a glance which platform the sender is on — no action required on your side.
 
 ```kotlin
 // All fields
@@ -297,6 +297,14 @@ viewModelScope.launch {
 }
 ```
 
+The feedback endpoints send these metadata fields automatically:
+
+- `osName` — always `Android`
+- `osVersion` — for example `15`
+- `deviceName` — raw Android model string such as `Pixel 9 Pro`
+
+The Jishu backend resolves `deviceName` for dashboard display, so the SDK does not bundle a local device-name lookup table.
+
 ### Typical app integration
 
 The simplest integration is:
@@ -392,6 +400,7 @@ suspend fun vote(proposalId: String): Int
 ### Behavior notes
 
 - `submitProposal` and `vote` use a stable device-scoped voter token that is generated separately from `displayUserID` and persisted in `SharedPreferences` under the key `voter_token`.
+- Proposal submissions and votes include `osName`, `osVersion`, and the raw Android model string in `deviceName`.
 - The feedback endpoints are public and rate-limited by the backend.
 - Duplicate votes from the same device are ignored by the server.
 - The SDK retries once on transport failures or 5xx responses, matching the contact form behavior.
@@ -523,8 +532,8 @@ The library is versioned via **git tags**. Use full three-part semantic versioni
 ### Tag and push
 
 ```bash
-git tag 0.1.5
-git push origin 0.1.5
+git tag 0.1.6
+git push origin 0.1.6
 ```
 
 Or push all local tags at once:

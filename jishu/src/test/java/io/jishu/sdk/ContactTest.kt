@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -88,9 +89,13 @@ class ContactTest {
         )
         val recorded = server.takeRequest()
         val body = recorded.body.readUtf8()
-        assert(body.contains("\"senderName\":\"Alice\""))
-        assert(body.contains("\"senderEmail\":\"alice@example.com\""))
-        assert(body.contains("\"subject\":\"Hello\""))
-        assert(body.contains("\"body\":\"World\""))
+        assertTrue(body.contains("\"senderName\":\"Alice\""))
+        assertTrue(body.contains("\"senderEmail\":\"alice@example.com\""))
+        assertTrue(body.contains("\"subject\":\"Hello\""))
+        assertTrue(body.contains("\"body\":\"World\""))
+        assertTrue(body.contains("\"platform\":\"android\""))
+        assertTrue(body.contains("\"osName\":"))
+        assertTrue(body.contains("\"osVersion\":"))
+        assertTrue(body.contains("\"deviceName\":"))
     }
 }

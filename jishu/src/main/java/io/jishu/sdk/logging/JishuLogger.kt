@@ -9,13 +9,22 @@ internal object JishuLogger {
 
     /** Logs an error message. Always printed in both DEFAULT and VERBOSE modes. */
     fun error(message: String, throwable: Throwable? = null) {
-        Log.e(TAG, "‼️ Jishu - $message", throwable)
+        runCatching {
+            Log.e(TAG, "‼️ Jishu - $message", throwable)
+        }.getOrElse {
+            System.err.println("‼️ Jishu - $message")
+            throwable?.printStackTrace(System.err)
+        }
     }
 
     /** Logs a verbose message. Only printed in VERBOSE mode. */
     fun verbose(message: String) {
         if (level == JishuDebugLevel.VERBOSE) {
-            Log.d(TAG, "📱 Jishu - $message")
+            runCatching {
+                Log.d(TAG, "📱 Jishu - $message")
+            }.getOrElse {
+                println("📱 Jishu - $message")
+            }
         }
     }
 }
