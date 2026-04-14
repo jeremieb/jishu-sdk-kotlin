@@ -17,4 +17,22 @@ data class ReviewConfig(
     val ratingThreshold: Int = 4,
     val feedbackPrompt: String = "",
     val captureFeedbackOnNegative: Boolean = true,
-)
+) {
+    companion object {
+        /** Permissive fallback used when the network fails during a manual trigger. */
+        val manualFallback = ReviewConfig(
+            enabled = true,
+            triggerMode = "manual",
+            minLaunches = 0,
+            minDaysSinceInstall = 0,
+            triggerLogic = "OR",
+            cooldownDays = 0,
+            maxPromptsPerDevice = Int.MAX_VALUE,
+            promptTitle = "",
+            promptQuestion = "",
+            ratingThreshold = 4,
+            feedbackPrompt = "",
+            captureFeedbackOnNegative = true,
+        )
+    }
+}

@@ -2,9 +2,10 @@ package io.jishu.sdk.review
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.view.Gravity
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.RatingBar
+import android.widget.TextView
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -32,26 +33,70 @@ internal object DefaultReviewAlertPresenter {
         val title    = config.promptTitle.ifEmpty { "Enjoying the app?" }
         val question = config.promptQuestion.ifEmpty { "We'd love to hear what you think." }
 
-        // Star rating dialog
+        // Star rating dialog with an explicit five-star picker.
         val rating: Int? = suspendCoroutine { continuation ->
-            val ratingBar = RatingBar(activity).apply {
-                numStars = 5
-                stepSize = 1f
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                )
+            val density = activity.resources.displayMetrics.density
+            fun dp(value: Int): Int = (value * density).toInt()
+
+            var selectedRating = 0
+            val starViews = mutableListOf<TextView>()
+
+            fun updateStars() {
+                starViews.forEachIndexed { index, starView ->
+                    starView.text = if (index < selectedRating) "\u2605" else "\u2606"
+                }
             }
-            AlertDialog.Builder(activity)
+
+            val starRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(20), dp(8), dp(20), dp(8))
+            }
+
+            repeat(5) { index ->
+                val starValue = index + 1
+                val starView = TextView(activity).apply {
+                    text = "\u2606"
+                    textSize = 32f
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                    setOnClickListener {
+                        selectedRating = starValue
+                        updateStars()
+                    }
+                }
+                starViews += starView
+                starRow.addView(starView)
+            }
+
+            val dialog = AlertDialog.Builder(activity)
                 .setTitle(title)
                 .setMessage(question)
-                .setView(ratingBar)
-                .setPositiveButton("Submit") { _, _ ->
-                    continuation.resume(ratingBar.rating.toInt().coerceIn(1, 5))
-                }
+                .setView(starRow)
+                .setPositiveButton("Submit", null)
                 .setNegativeButton("Not now") { _, _ -> continuation.resume(null) }
                 .setOnCancelListener { continuation.resume(null) }
-                .show()
+                .create()
+
+            dialog.setOnShowListener {
+                val submitButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                submitButton.isEnabled = selectedRating > 0
+                submitButton.setOnClickListener {
+                    if (selectedRating > 0) {
+                        continuation.resume(selectedRating)
+                        dialog.dismiss()
+                    }
+                }
+
+                starViews.forEachIndexed { index, starView ->
+                    starView.setOnClickListener {
+                        selectedRating = index + 1
+                        updateStars()
+                        submitButton.isEnabled = true
+                    }
+                }
+            }
+
+            dialog.show()
         }
 
         if (rating == null) return ReviewPromptResult(rating = null, dismissed = true)

@@ -10,19 +10,30 @@ import java.util.concurrent.TimeUnit
 internal object JishuReview {
 
     /** Pure eligibility check — no side effects, no network calls. */
-    fun isEligible(config: ReviewConfig, store: ReviewStore): Boolean {
+    fun isEligible(
+        config: ReviewConfig,
+        store: ReviewStore,
+        bypassTimingGates: Boolean = false,
+    ): Boolean {
         if (!config.enabled) return false
         if (store.promptCount >= config.maxPromptsPerDevice) return false
 
-        store.lastPromptDate?.let { lastMs ->
-            val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
-            if (daysSince < config.cooldownDays) return false
+        if (!bypassTimingGates) {
+            store.lastPromptDate?.let { lastMs ->
+                val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
+                if (daysSince < config.cooldownDays) return false
+            }
         }
 
         val launchCount = store.launchCount
         val installDate = store.installDate
-        val launchesMet = config.minLaunches == 0 || launchCount >= config.minLaunches
+        val launchesMet = when {
+            bypassTimingGates -> true
+            config.minLaunches == 0 -> true
+            else -> launchCount >= config.minLaunches
+        }
         val daysMet = when {
+            bypassTimingGates -> true
             config.minDaysSinceInstall == 0 -> true
             installDate == 0L -> false
             else -> {

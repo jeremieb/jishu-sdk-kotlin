@@ -7,6 +7,7 @@ internal data class ReviewEventRequest(
     val eventType: String,
     val platform: String,
     val rating: Int? = null,
+    val feedback: String? = null,
 )
 
 @Serializable

@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     `maven-publish`
     `signing`
@@ -65,7 +64,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "page.jishu"
             artifactId = "jishu-android"
-            version = "0.1.8"
+            version = "0.1.9"
 
             afterEvaluate {
                 from(components["release"])
@@ -106,4 +105,3 @@ signing {
     useInMemoryPgpKeys(keyId, key, password)
     sign(publishing.publications["release"])
 }
-

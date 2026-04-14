@@ -2,8 +2,10 @@ package io.jishu.sdk
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import io.jishu.sdk.cache.AccessCache
 import io.jishu.sdk.config.JishuConfig
+import io.jishu.sdk.config.JishuEnvironment
 import io.jishu.sdk.contact.ContactMessage
 import io.jishu.sdk.feedback.Proposal
 import io.jishu.sdk.feedback.ProposalStatus
@@ -15,6 +17,7 @@ import io.jishu.sdk.model.AccessResult
 import io.jishu.sdk.network.JishuClient
 import io.jishu.sdk.review.JishuReview
 import io.jishu.sdk.review.JishuReviewUIHandler
+import io.jishu.sdk.review.ReviewConfig
 import io.jishu.sdk.review.ReviewStore
 import java.util.concurrent.TimeUnit
 
@@ -37,16 +40,16 @@ object Jishu {
      * before any other Jishu call.
      *
      * @param context      Application context.
-     * @param baseUrl      Root origin of your Jishu server, e.g. "https://jishu.page".
+     * @param server       Which backend to connect to. [JishuEnvironment.PRODUCTION] (default) or [JishuEnvironment.STAGING].
      * @param apiToken     API token from Account → API access (never log or expose this).
      * @param appId        Your app ID from the Jishu dashboard.
-     * @param environment  Optional: "production", "staging", "testflight", or "internal".
-     * @param debugLevel  Controls Logcat output verbosity. [JishuDebugLevel.DEFAULT] prints errors only;
-     *                    [JishuDebugLevel.VERBOSE] prints all SDK activity. Defaults to [JishuDebugLevel.DEFAULT].
+     * @param environment  Optional release channel: "production", "staging", "testflight", or "internal".
+     * @param debugLevel   Controls Logcat output verbosity. [JishuDebugLevel.DEFAULT] prints errors only;
+     *                     [JishuDebugLevel.VERBOSE] prints all SDK activity. Defaults to [JishuDebugLevel.DEFAULT].
      */
     fun configure(
         context: Context,
-        baseUrl: String,
+        server: JishuEnvironment = JishuEnvironment.PRODUCTION,
         apiToken: String,
         appId: String,
         environment: String? = null,
@@ -54,7 +57,7 @@ object Jishu {
     ) {
         JishuLogger.level = debugLevel
         val cfg = JishuConfig(
-            baseUrl = baseUrl.trimEnd('/'),
+            baseUrl = server.baseUrl,
             apiToken = apiToken,
             appId = appId,
             environment = environment
@@ -64,7 +67,7 @@ object Jishu {
         client = JishuClient(cfg)
         cache = AccessCache()
         reviewStore = ReviewStore(context.applicationContext)
-        JishuLogger.verbose("Jishu SDK configured. appId=${cfg.appId}")
+        JishuLogger.configure("Jishu SDK configured — server=${server}, appId=${cfg.appId}")
     }
 
     /**
@@ -152,7 +155,7 @@ object Jishu {
         val cacheKey = externalUserId ?: deviceId
 
         ac.get(cacheKey)?.let { cached ->
-            JishuLogger.verbose("Cache hit for key=$cacheKey")
+            JishuLogger.info("Cache hit for key=$cacheKey")
             return cached
         }
 
@@ -180,10 +183,14 @@ object Jishu {
         val rs = reviewStore ?: return
         rs.setInstallDateIfNeeded()
         rs.incrementLaunchCount()
+        val bypassTimingGates = isDebugBuild(activity)
 
         val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }.getOrNull() ?: return
         if (reviewConfig.triggerMode != "auto") return
-        if (!JishuReview.isEligible(reviewConfig, rs)) return
+        if (bypassTimingGates) {
+            JishuLogger.info("DEBUG Bypass: skipping review launch/day/cooldown gates")
+        }
+        if (!JishuReview.isEligible(reviewConfig, rs, bypassTimingGates = bypassTimingGates)) return
 
         JishuReview.runPromptFlow(
             config    = reviewConfig,
@@ -208,16 +215,38 @@ object Jishu {
     suspend fun requestReviewIfEligible(activity: Activity): Boolean {
         val c = client ?: return false
         val rs = reviewStore ?: return false
+        val bypassTimingGates = isDebugBuild(activity)
         // Always record the launch — even in manual mode
         rs.setInstallDateIfNeeded()
         rs.incrementLaunchCount()
 
-        val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }.getOrNull() ?: return false
-        if (!reviewConfig.enabled) return false
-        if (rs.promptCount >= reviewConfig.maxPromptsPerDevice) return false
-        rs.lastPromptDate?.let { lastMs ->
-            val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
-            if (daysSince < reviewConfig.cooldownDays) return false
+        // Bypass the 1-hour cache so dashboard changes take effect immediately
+        rs.invalidateConfigCache()
+
+        val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }
+            .getOrElse {
+                JishuLogger.info("Could not fetch review config, using manual fallback")
+                ReviewConfig.manualFallback
+            }
+
+        if (!reviewConfig.enabled) {
+            JishuLogger.info("Review prompt is disabled in dashboard config")
+            return false
+        }
+        if (rs.promptCount >= reviewConfig.maxPromptsPerDevice) {
+            JishuLogger.info("Max prompts per device reached (${rs.promptCount}/${reviewConfig.maxPromptsPerDevice})")
+            return false
+        }
+        if (bypassTimingGates) {
+            JishuLogger.info("DEBUG Bypass: skipping review launch/day/cooldown gates")
+        } else {
+            rs.lastPromptDate?.let { lastMs ->
+                val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
+                if (daysSince < reviewConfig.cooldownDays) {
+                    JishuLogger.info("Cooldown not elapsed ($daysSince/${reviewConfig.cooldownDays} days)")
+                    return false
+                }
+            }
         }
 
         JishuReview.runPromptFlow(
@@ -229,5 +258,9 @@ object Jishu {
             activity  = activity,
         )
         return true
+    }
+
+    private fun isDebugBuild(context: Context): Boolean {
+        return (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
 }

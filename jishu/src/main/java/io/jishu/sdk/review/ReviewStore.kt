@@ -47,6 +47,14 @@ internal class ReviewStore(context: Context) {
             .apply()
     }
 
+    /** Clears the cached config, forcing a fresh fetch on the next call. */
+    fun invalidateConfigCache() {
+        prefs.edit()
+            .remove(KEY_CONFIG_JSON)
+            .remove(KEY_CONFIG_CACHED_AT)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME      = "io.jishu.sdk.review"
         private const val KEY_INSTALL_DATE    = "install_date"
