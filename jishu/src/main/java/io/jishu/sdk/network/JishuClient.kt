@@ -12,9 +12,13 @@ import io.jishu.sdk.network.dto.CheckAccessRequest
 import io.jishu.sdk.network.dto.ContactRequest
 import io.jishu.sdk.network.dto.ProposalListResponse
 import io.jishu.sdk.network.dto.ProposalResponse
+import io.jishu.sdk.network.dto.ReviewEventRequest
+import io.jishu.sdk.network.dto.ReviewFeedbackRequest
 import io.jishu.sdk.network.dto.SubmitProposalRequest
 import io.jishu.sdk.network.dto.VoteRequest
 import io.jishu.sdk.network.dto.VoteResponse
+import io.jishu.sdk.review.ReviewConfig
+import io.jishu.sdk.review.ReviewStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -29,6 +33,8 @@ import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 internal class JishuClient(private val config: JishuConfig) {
+
+    val appId: String get() = config.appId
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -194,6 +200,57 @@ internal class JishuClient(private val config: JishuConfig) {
                 JishuLogger.error("Transport error: ${e.message}")
                 throw e
             }
+        }
+    }
+
+    // ── Review ──────────────────────────────────────────────────────────────
+
+    /** Fetch review config with a 1-hour TTL backed by ReviewStore. */
+    suspend fun fetchReviewConfig(appId: String, store: ReviewStore): ReviewConfig {
+        store.cachedConfig()?.let { return it }
+        val url = "${config.baseUrl}/api/apps/${URLEncoder.encode(appId, Charsets.UTF_8.name())}/review/config"
+        val request = Request.Builder().url(url).get().build()
+        JishuLogger.verbose("GET $url")
+        val result = executeFeedbackWithRetry(request) { body ->
+            json.decodeFromString<ReviewConfig>(body)
+        }
+        store.cacheConfig(result)
+        return result
+    }
+
+    /** Fire-and-forget event log. Swallows all exceptions. */
+    suspend fun logReviewEvent(appId: String, eventType: String, platform: String, rating: Int?) {
+        try {
+            val url = "${config.baseUrl}/api/apps/${URLEncoder.encode(appId, Charsets.UTF_8.name())}/review/events"
+            val bodyJson = json.encodeToString(ReviewEventRequest(eventType = eventType, platform = platform, rating = rating))
+                .toRequestBody(mediaType)
+            val request = Request.Builder().url(url).post(bodyJson).build()
+            JishuLogger.verbose("POST $url eventType=$eventType")
+            withContext(Dispatchers.IO) { http.newCall(request).execute() }.use { /* fire-and-forget */ }
+        } catch (e: Exception) {
+            JishuLogger.error("Review event error ($eventType): ${e.message}")
+        }
+    }
+
+    /** Fire-and-forget feedback submission. Swallows all exceptions. */
+    suspend fun sendReviewFeedback(appId: String, body: String) {
+        try {
+            val url = "${config.baseUrl}/api/apps/${URLEncoder.encode(appId, Charsets.UTF_8.name())}/review/feedback"
+            val meta = collectDeviceMetaInfo()
+            val bodyJson = json.encodeToString(
+                ReviewFeedbackRequest(
+                    body = body,
+                    platform = "android",
+                    osName = meta.osName,
+                    osVersion = meta.osVersion,
+                    deviceName = meta.deviceName,
+                )
+            ).toRequestBody(mediaType)
+            val request = Request.Builder().url(url).post(bodyJson).build()
+            JishuLogger.verbose("POST $url")
+            executeContactWithRetry(request)
+        } catch (e: Exception) {
+            JishuLogger.error("Review feedback error: ${e.message}")
         }
     }
 

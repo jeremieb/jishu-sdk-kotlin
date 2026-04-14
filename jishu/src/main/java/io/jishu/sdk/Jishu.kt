@@ -1,5 +1,6 @@
 package io.jishu.sdk
 
+import android.app.Activity
 import android.content.Context
 import io.jishu.sdk.cache.AccessCache
 import io.jishu.sdk.config.JishuConfig
@@ -12,6 +13,10 @@ import io.jishu.sdk.logging.JishuLogger
 import io.jishu.sdk.JishuDebugLevel
 import io.jishu.sdk.model.AccessResult
 import io.jishu.sdk.network.JishuClient
+import io.jishu.sdk.review.JishuReview
+import io.jishu.sdk.review.JishuReviewUIHandler
+import io.jishu.sdk.review.ReviewStore
+import java.util.concurrent.TimeUnit
 
 object Jishu {
 
@@ -19,6 +24,13 @@ object Jishu {
     private var voterTokenStore: VoterTokenStore? = null
     private var client: JishuClient? = null
     private var cache: AccessCache? = null
+    private var reviewStore: ReviewStore? = null
+
+    /**
+     * Optional custom UI handler for the review prompt.
+     * Set before calling [trackLaunch]. When null, the SDK shows a default [android.app.AlertDialog].
+     */
+    var reviewUIHandler: JishuReviewUIHandler? = null
 
     /**
      * Initializes the SDK. Call this once from your Application.onCreate() or
@@ -51,6 +63,7 @@ object Jishu {
         voterTokenStore = VoterTokenStore(context.applicationContext)
         client = JishuClient(cfg)
         cache = AccessCache()
+        reviewStore = ReviewStore(context.applicationContext)
         JishuLogger.verbose("Jishu SDK configured. appId=${cfg.appId}")
     }
 
@@ -150,5 +163,71 @@ object Jishu {
         }
 
         return result
+    }
+
+    /**
+     * Track a cold app launch and, when [triggerMode] is `"auto"`, show the review prompt
+     * if eligibility conditions are met.
+     *
+     * Call once per cold start from [android.app.Application.onCreate] for the launch count,
+     * passing the [Activity] from your main Activity's `onCreate` — **not** `onResume`,
+     * which fires on every foreground transition.
+     *
+     * @param activity Required for showing the default AlertDialog and for the Play review API.
+     */
+    suspend fun trackLaunch(activity: Activity) {
+        val c = client ?: return
+        val rs = reviewStore ?: return
+        rs.setInstallDateIfNeeded()
+        rs.incrementLaunchCount()
+
+        val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }.getOrNull() ?: return
+        if (reviewConfig.triggerMode != "auto") return
+        if (!JishuReview.isEligible(reviewConfig, rs)) return
+
+        JishuReview.runPromptFlow(
+            config    = reviewConfig,
+            store     = rs,
+            client    = c,
+            appId     = c.appId,
+            uiHandler = reviewUIHandler,
+            activity  = activity,
+        )
+    }
+
+    /**
+     * Manually trigger the review flow at a meaningful moment in your app.
+     *
+     * Always records the launch (increments launch count and sets install date on first call).
+     * The SDK still respects [cooldownDays] and [maxPromptsPerDevice].
+     * Use this when [triggerMode] is `"manual"`.
+     *
+     * @param activity Required for showing the default AlertDialog and for the Play review API.
+     * @return `true` if the prompt was shown.
+     */
+    suspend fun requestReviewIfEligible(activity: Activity): Boolean {
+        val c = client ?: return false
+        val rs = reviewStore ?: return false
+        // Always record the launch — even in manual mode
+        rs.setInstallDateIfNeeded()
+        rs.incrementLaunchCount()
+
+        val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }.getOrNull() ?: return false
+        if (!reviewConfig.enabled) return false
+        if (rs.promptCount >= reviewConfig.maxPromptsPerDevice) return false
+        rs.lastPromptDate?.let { lastMs ->
+            val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
+            if (daysSince < reviewConfig.cooldownDays) return false
+        }
+
+        JishuReview.runPromptFlow(
+            config    = reviewConfig,
+            store     = rs,
+            client    = c,
+            appId     = c.appId,
+            uiHandler = reviewUIHandler,
+            activity  = activity,
+        )
+        return true
     }
 }
