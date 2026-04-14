@@ -51,8 +51,8 @@ class FeedbackTest {
                           "title": "Dark mode",
                           "description": "Please add dark mode.",
                           "status": "open",
-                          "vote_count": 12,
-                          "created_at": "2026-03-28T12:00:00.000Z"
+                          "voteCount": 12,
+                          "createdAt": "2026-03-28T12:00:00.000Z"
                         }
                       ]
                     }
@@ -89,8 +89,8 @@ class FeedbackTest {
                         "title": "Dark mode",
                         "description": "Please add dark mode.",
                         "status": "open",
-                        "vote_count": 1,
-                        "created_at": "2026-03-28T12:00:00.000Z"
+                        "voteCount": 1,
+                        "createdAt": "2026-03-28T12:00:00.000Z"
                       }
                     }
                     """.trimIndent()
@@ -153,8 +153,8 @@ class FeedbackTest {
                         "title": "Dark mode",
                         "description": "",
                         "status": "open",
-                        "vote_count": 1,
-                        "created_at": "2026-03-28T12:00:00.000Z"
+                        "voteCount": 1,
+                        "createdAt": "2026-03-28T12:00:00.000Z"
                       }
                     }
                     """.trimIndent()

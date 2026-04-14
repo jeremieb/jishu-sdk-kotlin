@@ -11,8 +11,8 @@ internal data class ProposalDto(
     val title: String,
     val description: String,
     val status: String,
-    @SerialName("vote_count") val voteCount: Int,
-    @SerialName("created_at") val createdAt: String,
+        val voteCount: Int = 0,
+    val createdAt: String = "",
 ) {
     fun toProposal() = Proposal(
         id = id,
