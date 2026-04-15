@@ -4,7 +4,7 @@
 
 A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
-- **Current version:** `0.1.6`
+- **Current version:** `0.1.8`
 - **Minimum SDK:** Android 7.0 (API 24)
 - **Kotlin:** 2.0+
 
@@ -14,15 +14,17 @@ A lightweight Android library for [Jishu](https://jishu.page) — check promo ac
 
 1. [What is Jishu promo access?](#what-is-jishu-promo-access)
 2. [Installation](#installation)
-3. [Quickstart](#quickstart)
-4. [Contact form](#contact-form)
-5. [Feature feedback](#feature-feedback)
-6. [User identity and `displayUserID`](#user-identity-and-displayuserid)
-7. [RevenueCat integration](#revenuecat-integration)
-8. [Reinstall limitation](#reinstall-limitation)
-9. [Security notes](#security-notes)
-10. [Publishing a new version](#publishing-a-new-version)
-12. [Running the tests](#running-the-tests)
+3. [Android example app](#android-example-app)
+4. [Quickstart](#quickstart)
+5. [Contact form](#contact-form)
+6. [Feature feedback](#feature-feedback)
+7. [Review prompts](#review-prompts)
+8. [User identity and `displayUserID`](#user-identity-and-displayuserid)
+9. [RevenueCat integration](#revenuecat-integration)
+10. [Reinstall limitation](#reinstall-limitation)
+11. [Security notes](#security-notes)
+12. [Publishing a new version](#publishing-a-new-version)
+13. [Running the tests](#running-the-tests)
 
 ---
 
@@ -38,7 +40,7 @@ Add the dependency to your app or module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("page.jishu:jishu-android:0.1.6")
+    implementation("page.jishu:jishu-android:0.1.8")
 }
 ```
 
@@ -46,7 +48,7 @@ Or in Groovy `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'page.jishu:jishu-android:0.1.6'
+    implementation 'page.jishu:jishu-android:0.1.8'
 }
 ```
 
@@ -73,6 +75,101 @@ To build and test against a local snapshot before publishing:
 
 Then add `mavenLocal()` **before** `mavenCentral()` in your app's `settings.gradle.kts`.
 
+## Android example app
+
+This repository includes a runnable sample project in [`App Example/`](./App%20Example) that shows the SDK working end to end.
+
+### What the example demonstrates
+
+- SDK configuration from an `Application` class
+- Promo access checks with either `displayUserID` or a custom `externalUserId`
+- Manual review prompt triggering
+- Automatic review launch tracking from `MainActivity.onCreate`
+
+Key files:
+
+- [`App Example/app/src/main/java/com/jishuexample/app/JishuApplication.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/JishuApplication.kt)
+- [`App Example/app/src/main/java/com/jishuexample/app/MainActivity.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/MainActivity.kt)
+- [`App Example/app/src/main/java/com/jishuexample/app/MainScreen.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/MainScreen.kt)
+- [`App Example/app/src/main/java/com/jishuexample/app/MainViewModel.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/MainViewModel.kt)
+- [`App Example/app/src/main/java/com/jishuexample/app/ExampleAppConfig.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/ExampleAppConfig.kt)
+
+### Minimum requirements
+
+For the SDK itself:
+
+- Android minSdk `24`
+- Kotlin `2.2.10`
+- Android Gradle Plugin `9.1.1`
+- Gradle `9.3.1`
+- Java `11`
+
+For the included example app:
+
+- Android minSdk `33`
+- Android Studio with Gradle Kotlin DSL support
+- JDK `11` configured in Android Studio
+- An Android emulator or device running Android 13+ for the sample app
+
+### How to open the example in Android Studio
+
+The sample app is its own Gradle project inside the repository. Open that folder directly:
+
+1. In Android Studio, choose `Open`.
+2. Select [`App Example/`](./App%20Example).
+3. Wait for Gradle sync to finish.
+4. Run the `app` configuration on an emulator or connected device.
+
+Do not open the repository root if your goal is to run the sample app UI. The root project is the SDK build, while `App Example/` is the runnable Android application.
+
+### How the local SDK wiring works
+
+The example app uses Gradle `includeBuild("../")` in [`App Example/settings.gradle.kts`](./App%20Example/settings.gradle.kts), so:
+
+- `implementation("page.jishu:jishu-android")` inside the sample app resolves to the local [`jishu`](./jishu) module in this repository
+- changes you make in the SDK are picked up by the example app without publishing to Maven Central
+
+### Configure the sample with your own Jishu app
+
+Before running the sample against your own backend configuration, update [`ExampleAppConfig.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/ExampleAppConfig.kt):
+
+```kotlin
+object ExampleAppConfig {
+    val server: JishuEnvironment = JishuEnvironment.PRODUCTION
+    const val API_TOKEN = "YOUR_API_TOKEN"
+    const val APP_ID = "YOUR_APP_ID"
+}
+```
+
+Use values from your Jishu dashboard:
+
+- `API_TOKEN`: Account → API access
+- `APP_ID`: the app identifier from your Jishu dashboard
+- `server`: `JishuEnvironment.PRODUCTION` or `JishuEnvironment.STAGING`
+
+### What to expect when you run it
+
+- The screen shows the generated `displayUserID`
+- You can optionally type an `externalUserId`
+- `Check Access` calls `Jishu.checkAccess(...)`
+- `Ask for Review` calls `Jishu.requestReviewIfEligible(...)`
+- On debug builds, the review flow bypasses launch/day/cooldown timing gates and logs `DEBUG Bypass: skipping review launch/day/cooldown gates`
+
+### Command-line build
+
+From the example project directory:
+
+```bash
+cd "App Example"
+./gradlew :app:assembleDebug
+```
+
+From the repository root, the SDK build itself can be checked with:
+
+```bash
+./gradlew help
+```
+
 ---
 
 ## Quickstart
@@ -83,13 +180,14 @@ Call `configure` from your `Application` class before any other SDK call. Create
 
 ```kotlin
 import io.jishu.sdk.Jishu
+import io.jishu.sdk.config.JishuEnvironment
 
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Jishu.configure(
             context = this,
-            baseUrl = "https://jishu.page",
+            server = JishuEnvironment.PRODUCTION,
             apiToken = "YOUR_API_TOKEN",
             appId = "YOUR_APP_ID"
         )
@@ -420,6 +518,121 @@ suspend fun vote(proposalId: String): Int
 - Use `ProposalStatus.OPEN` for the public “vote on ideas” view, and request other statuses only if you want to show planned or shipped roadmap items.
 - Do not generate or pass your own `voter_token`; the SDK manages its own stable voter token internally and sends it automatically on `submitProposal` and `vote` calls.
 
+## Review prompts
+
+The review prompt feature intercepts users before they reach the Play Store, lets you measure sentiment, routes happy users to the Google Play In-App Review dialog, and captures negative feedback as a message in your dashboard **User Messages** inbox — labelled **Review Feedback** so you can distinguish it from contact form mail.
+
+### How it works
+
+1. SDK shows your customisable star-rating dialog (`AlertDialog` with a `RatingBar`).
+2. Rating ≥ threshold (default 4) → triggers the Google Play In-App Review flow.
+3. Rating < threshold (and `captureFeedbackOnNegative` is on) → shows a follow-up text input and sends the feedback silently to your **User Messages** inbox.
+4. All events (shown, dismissed, rating_given, native_requested, feedback_sent) are logged to the Jishu dashboard under **Reviews → Analytics**.
+
+### Dashboard setup
+
+Go to your app in the Jishu dashboard → **Reviews** tab. Configure:
+
+- **Enabled** toggle — must be on for any prompts to fire.
+- **Trigger mode** — `auto` (SDK decides timing) or `manual` (you call `requestReviewIfEligible` at a meaningful moment).
+- **Min launches / Min days since install** — eligibility thresholds.
+- **Cooldown days / Max prompts per device** — prevents over-prompting.
+- **Rating threshold** — ratings at or above this value go to the native Play dialog; below go to feedback capture.
+
+### Auto mode — `trackLaunch`
+
+Call once per cold app launch from your `Application.onCreate()`. The SDK increments the launch counter, fetches the remote config (cached for 1 hour), and shows the prompt when all eligibility conditions are met.
+
+> **Important:** Pass the `Activity` from your main Activity's `onCreate` — **not** `onResume`, which fires on every foreground transition.
+
+```kotlin
+// Application.onCreate() — increments launch count and sets install date
+class MyApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        Jishu.configure(context = this, baseUrl = "...", apiToken = "...", appId = "...")
+    }
+}
+
+// MainActivity.onCreate()
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        lifecycleScope.launch {
+            Jishu.trackLaunch(activity = this@MainActivity)
+        }
+    }
+}
+```
+
+### Manual mode — `requestReviewIfEligible`
+
+Use when `triggerMode` is set to `"manual"` in the dashboard. Call at a meaningful moment in your app (e.g. after a successful export, after a milestone). The SDK still enforces `cooldownDays` and `maxPromptsPerDevice`.
+
+```kotlin
+// After a milestone
+val shown = Jishu.requestReviewIfEligible(activity = this)
+if (shown) {
+    // prompt was presented
+}
+```
+
+The method always records the launch (sets install date on first call and increments launch count), so you do not need a separate `trackLaunch` call in manual mode.
+
+### Custom UI
+
+By default the SDK shows an `AlertDialog` with a `RatingBar`. To match your app's design, assign a `JishuReviewUIHandler` before calling `trackLaunch` or `requestReviewIfEligible`:
+
+```kotlin
+Jishu.reviewUIHandler = MyReviewPresenter()
+```
+
+#### `JishuReviewUIHandler` interface
+
+```kotlin
+interface JishuReviewUIHandler {
+    suspend fun presentReviewPrompt(title: String, question: String): ReviewPromptResult
+}
+```
+
+Your implementation receives the `promptTitle` and `promptQuestion` strings from the dashboard config and must return a `ReviewPromptResult`:
+
+#### `ReviewPromptResult`
+
+```kotlin
+data class ReviewPromptResult(
+    val rating: Int?,            // 1–5, null if dismissed without rating
+    val dismissed: Boolean,      // true if the user closed without rating
+    val feedbackMessage: String? // negative-path free text; null if not captured
+)
+```
+
+The SDK uses `rating` to decide whether to trigger the native Play review flow or capture feedback. You do not need to call any SDK method from within your handler — just return the data class.
+
+> **Note:** Do not store the `Activity` reference as a field in your handler. Use it only within the scope of the `suspend fun` call to prevent memory leaks.
+
+### Public API
+
+```kotlin
+// Auto mode — call once per cold launch from Activity.onCreate
+suspend fun trackLaunch(activity: Activity)
+
+// Manual mode — call at a meaningful moment
+suspend fun requestReviewIfEligible(activity: Activity): Boolean
+
+// Custom UI handler (set before trackLaunch / requestReviewIfEligible)
+var reviewUIHandler: JishuReviewUIHandler?
+```
+
+### Notes
+
+- `trackLaunch` and `requestReviewIfEligible` are no-ops (return silently) if `Jishu.configure(...)` has not been called.
+- Network errors fetching the review config are swallowed silently — no prompt is shown if the config cannot be fetched.
+- The Google Play In-App Review API has its own quota and may silently suppress the dialog on over-prompted devices. The SDK does not control this.
+- Review feedback messages appear in **User Messages** with the label **Review Feedback** and no email address. The Reply button is hidden for these entries.
+
+---
+
 ## User identity and `displayUserID`
 
 `Jishu.displayUserID` is a stable, device-scoped identifier automatically generated on first launch and persisted in `SharedPreferences`. You can use it as a device identity in the Jishu dashboard.
@@ -532,8 +745,8 @@ The library is versioned via **git tags**. Use full three-part semantic versioni
 ### Tag and push
 
 ```bash
-git tag 0.1.6
-git push origin 0.1.6
+git tag 0.1.8
+git push origin 0.1.8
 ```
 
 Or push all local tags at once:
