@@ -13,20 +13,21 @@ internal object JishuReview {
     fun isEligible(
         config: ReviewConfig,
         store: ReviewStore,
+        appId: String,
         bypassTimingGates: Boolean = false,
     ): Boolean {
         if (!config.enabled) return false
-        if (store.promptCount >= config.maxPromptsPerDevice) return false
+        if (store.promptCount(appId) >= config.maxPromptsPerDevice) return false
 
         if (!bypassTimingGates) {
-            store.lastPromptDate?.let { lastMs ->
+            store.lastPromptDate(appId)?.let { lastMs ->
                 val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
                 if (daysSince < config.cooldownDays) return false
             }
         }
 
-        val launchCount = store.launchCount
-        val installDate = store.installDate
+        val launchCount = store.launchCount(appId)
+        val installDate = store.installDate(appId)
         val launchesMet = when {
             bypassTimingGates -> true
             config.minLaunches == 0 -> true
@@ -56,11 +57,12 @@ internal object JishuReview {
         appId: String,
         uiHandler: JishuReviewUIHandler?,
         activity: Activity,
-    ) {
-        // 1. Log shown
-        client.logReviewEvent(appId = appId, eventType = "shown", platform = "android", rating = null)
+    ): Boolean {
+        if (activity.isFinishing || activity.isDestroyed) {
+            return false
+        }
 
-        // 2. Present UI
+        // 1. Present UI
         val result: ReviewPromptResult = if (uiHandler != null) {
             uiHandler.presentReviewPrompt(
                 title    = config.promptTitle.ifEmpty { "Enjoying the app?" },
@@ -70,10 +72,14 @@ internal object JishuReview {
             DefaultReviewAlertPresenter.present(activity, config)
         }
 
+        // 2. Log shown after the prompt was actually presented.
+        client.logReviewEvent(appId = appId, eventType = "shown", platform = "android", rating = null)
+
         // 3. Dismissed without rating
         if (result.dismissed || result.rating == null) {
             client.logReviewEvent(appId = appId, eventType = "dismissed", platform = "android", rating = null)
-            return
+            store.recordPromptShown(appId)
+            return true
         }
 
         val rating = result.rating
@@ -103,6 +109,7 @@ internal object JishuReview {
         }
 
         // 7. Update local state
-        store.recordPromptShown()
+        store.recordPromptShown(appId)
+        return true
     }
 }

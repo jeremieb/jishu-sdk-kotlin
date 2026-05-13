@@ -1,9 +1,14 @@
 package io.jishu.sdk
 
+import android.content.Context
+import android.content.SharedPreferences
 import io.jishu.sdk.config.JishuConfig
 import io.jishu.sdk.model.MatchType
 import io.jishu.sdk.network.JishuApiException
 import io.jishu.sdk.network.JishuClient
+import io.jishu.sdk.review.ReviewStore
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -34,6 +39,39 @@ class JishuClientTest {
     @After
     fun tearDown() {
         server.shutdown()
+    }
+
+    private fun makeReviewStore(): ReviewStore {
+        val values = mutableMapOf<String, Any>()
+        val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+        every { editor.putLong(any(), any()) } answers {
+            values[firstArg()] = secondArg<Long>()
+            editor
+        }
+        every { editor.putInt(any(), any()) } answers {
+            values[firstArg()] = secondArg<Int>()
+            editor
+        }
+        every { editor.putString(any(), any()) } answers {
+            val key = firstArg<String>()
+            val value = secondArg<String?>()
+            if (value == null) values.remove(key) else values[key] = value
+            editor
+        }
+        every { editor.remove(any()) } answers {
+            values.remove(firstArg<String>())
+            editor
+        }
+
+        val prefs = mockk<SharedPreferences>()
+        every { prefs.getLong(any(), any()) } answers { values[firstArg<String>()] as? Long ?: secondArg() }
+        every { prefs.getInt(any(), any()) } answers { values[firstArg<String>()] as? Int ?: secondArg() }
+        every { prefs.getString(any(), any()) } answers { values[firstArg<String>()] as? String ?: secondArg() }
+        every { prefs.edit() } returns editor
+
+        val context = mockk<Context>()
+        every { context.getSharedPreferences(any(), any()) } returns prefs
+        return ReviewStore(context)
     }
 
     @Test
@@ -110,5 +148,72 @@ class JishuClientTest {
         val result = client.checkAccess(deviceId = "device-uuid", externalUserId = "user_abc")
         assertTrue(result.granted)
         assertEquals(MatchType.USER, result.matchType)
+    }
+
+    @Test
+    fun `fetchReviewConfig uses cached value for same app`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "enabled": true,
+                      "triggerMode": "manual",
+                      "minLaunches": 1,
+                      "minDaysSinceInstall": 0,
+                      "triggerLogic": "AND",
+                      "cooldownDays": 7,
+                      "maxPromptsPerDevice": 2,
+                      "promptTitle": "Enjoying the app?",
+                      "promptQuestion": "Tell us what you think.",
+                      "ratingThreshold": 4,
+                      "feedbackPrompt": "What could we improve?",
+                      "captureFeedbackOnNegative": true
+                    }
+                    """.trimIndent()
+                )
+        )
+        val store = makeReviewStore()
+
+        client.fetchReviewConfig(appId = "app_one", store = store)
+        client.fetchReviewConfig(appId = "app_one", store = store)
+
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `fetchReviewConfig cache is isolated per app id`() = runTest {
+        repeat(2) {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """
+                        {
+                          "enabled": true,
+                          "triggerMode": "manual",
+                          "minLaunches": 1,
+                          "minDaysSinceInstall": 0,
+                          "triggerLogic": "AND",
+                          "cooldownDays": 7,
+                          "maxPromptsPerDevice": 2,
+                          "promptTitle": "Enjoying the app?",
+                          "promptQuestion": "Tell us what you think.",
+                          "ratingThreshold": 4,
+                          "feedbackPrompt": "What could we improve?",
+                          "captureFeedbackOnNegative": true
+                        }
+                        """.trimIndent()
+                    )
+            )
+        }
+        val store = makeReviewStore()
+
+        client.fetchReviewConfig(appId = "app_one", store = store)
+        client.fetchReviewConfig(appId = "app_two", store = store)
+
+        assertEquals("/api/apps/app_one/review/config", server.takeRequest().path)
+        assertEquals("/api/apps/app_two/review/config", server.takeRequest().path)
     }
 }

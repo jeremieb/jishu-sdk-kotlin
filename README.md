@@ -4,7 +4,6 @@
 
 A lightweight Android library for [Jishu](https://jishu.page) — check promo access grants, send contact form messages, and collect feature proposals from native Android apps.
 
-- **Current version:** `0.1.8`
 - **Minimum SDK:** Android 7.0 (API 24)
 - **Kotlin:** 2.0+
 
@@ -627,7 +626,7 @@ var reviewUIHandler: JishuReviewUIHandler?
 ### Notes
 
 - `trackLaunch` and `requestReviewIfEligible` are no-ops (return silently) if `Jishu.configure(...)` has not been called.
-- Network errors fetching the review config are swallowed silently — no prompt is shown if the config cannot be fetched.
+- Network errors fetching the review config are swallowed silently — no prompt is shown if the config cannot be fetched, including manual triggers, so the live dashboard settings remain authoritative.
 - The Google Play In-App Review API has its own quota and may silently suppress the dialog on over-prompted devices. The SDK does not control this.
 - Review feedback messages appear in **User Messages** with the label **Review Feedback** and no email address. The Reply button is hidden for these entries.
 

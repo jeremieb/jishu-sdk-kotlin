@@ -8,50 +8,52 @@ internal class ReviewStore(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
+    private fun namespacedKey(base: String, appId: String) = "$base.$appId"
 
-    val installDate: Long get() = prefs.getLong(KEY_INSTALL_DATE, 0L)
-    val launchCount: Int get() = prefs.getInt(KEY_LAUNCH_COUNT, 0)
-    val lastPromptDate: Long? get() = prefs.getLong(KEY_LAST_PROMPT_DATE, 0L).takeIf { it > 0L }
-    val promptCount: Int get() = prefs.getInt(KEY_PROMPT_COUNT, 0)
+    fun installDate(appId: String): Long = prefs.getLong(namespacedKey(KEY_INSTALL_DATE, appId), 0L)
+    fun launchCount(appId: String): Int = prefs.getInt(namespacedKey(KEY_LAUNCH_COUNT, appId), 0)
+    fun lastPromptDate(appId: String): Long? = prefs.getLong(namespacedKey(KEY_LAST_PROMPT_DATE, appId), 0L).takeIf { it > 0L }
+    fun promptCount(appId: String): Int = prefs.getInt(namespacedKey(KEY_PROMPT_COUNT, appId), 0)
 
-    fun setInstallDateIfNeeded() {
-        if (prefs.getLong(KEY_INSTALL_DATE, 0L) == 0L) {
-            prefs.edit().putLong(KEY_INSTALL_DATE, System.currentTimeMillis()).apply()
+    fun setInstallDateIfNeeded(appId: String) {
+        val key = namespacedKey(KEY_INSTALL_DATE, appId)
+        if (prefs.getLong(key, 0L) == 0L) {
+            prefs.edit().putLong(key, System.currentTimeMillis()).apply()
         }
     }
 
-    fun incrementLaunchCount() {
-        prefs.edit().putInt(KEY_LAUNCH_COUNT, launchCount + 1).apply()
+    fun incrementLaunchCount(appId: String) {
+        prefs.edit().putInt(namespacedKey(KEY_LAUNCH_COUNT, appId), launchCount(appId) + 1).apply()
     }
 
-    fun recordPromptShown() {
+    fun recordPromptShown(appId: String) {
         prefs.edit()
-            .putLong(KEY_LAST_PROMPT_DATE, System.currentTimeMillis())
-            .putInt(KEY_PROMPT_COUNT, promptCount + 1)
+            .putLong(namespacedKey(KEY_LAST_PROMPT_DATE, appId), System.currentTimeMillis())
+            .putInt(namespacedKey(KEY_PROMPT_COUNT, appId), promptCount(appId) + 1)
             .apply()
     }
 
     /** Returns cached config if within the 1-hour TTL, otherwise null. */
-    fun cachedConfig(): ReviewConfig? {
-        val cachedAt = prefs.getLong(KEY_CONFIG_CACHED_AT, 0L)
+    fun cachedConfig(appId: String): ReviewConfig? {
+        val cachedAt = prefs.getLong(namespacedKey(KEY_CONFIG_CACHED_AT, appId), 0L)
         if (cachedAt == 0L) return null
         if (System.currentTimeMillis() - cachedAt > TTL_MS) return null
-        val encoded = prefs.getString(KEY_CONFIG_JSON, null) ?: return null
+        val encoded = prefs.getString(namespacedKey(KEY_CONFIG_JSON, appId), null) ?: return null
         return try { json.decodeFromString<ReviewConfig>(encoded) } catch (_: Exception) { null }
     }
 
-    fun cacheConfig(config: ReviewConfig) {
+    fun cacheConfig(config: ReviewConfig, appId: String) {
         prefs.edit()
-            .putString(KEY_CONFIG_JSON, json.encodeToString(config))
-            .putLong(KEY_CONFIG_CACHED_AT, System.currentTimeMillis())
+            .putString(namespacedKey(KEY_CONFIG_JSON, appId), json.encodeToString(config))
+            .putLong(namespacedKey(KEY_CONFIG_CACHED_AT, appId), System.currentTimeMillis())
             .apply()
     }
 
     /** Clears the cached config, forcing a fresh fetch on the next call. */
-    fun invalidateConfigCache() {
+    fun invalidateConfigCache(appId: String) {
         prefs.edit()
-            .remove(KEY_CONFIG_JSON)
-            .remove(KEY_CONFIG_CACHED_AT)
+            .remove(namespacedKey(KEY_CONFIG_JSON, appId))
+            .remove(namespacedKey(KEY_CONFIG_CACHED_AT, appId))
             .apply()
     }
 

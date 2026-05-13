@@ -181,8 +181,8 @@ object Jishu {
     suspend fun trackLaunch(activity: Activity) {
         val c = client ?: return
         val rs = reviewStore ?: return
-        rs.setInstallDateIfNeeded()
-        rs.incrementLaunchCount()
+        rs.setInstallDateIfNeeded(c.appId)
+        rs.incrementLaunchCount(c.appId)
         val bypassTimingGates = isDebugBuild(activity)
 
         val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }.getOrNull() ?: return
@@ -190,7 +190,7 @@ object Jishu {
         if (bypassTimingGates) {
             JishuLogger.info("DEBUG Bypass: skipping review launch/day/cooldown gates")
         }
-        if (!JishuReview.isEligible(reviewConfig, rs, bypassTimingGates = bypassTimingGates)) return
+        if (!JishuReview.isEligible(reviewConfig, rs, c.appId, bypassTimingGates = bypassTimingGates)) return
 
         JishuReview.runPromptFlow(
             config    = reviewConfig,
@@ -217,30 +217,31 @@ object Jishu {
         val rs = reviewStore ?: return false
         val bypassTimingGates = isDebugBuild(activity)
         // Always record the launch — even in manual mode
-        rs.setInstallDateIfNeeded()
-        rs.incrementLaunchCount()
+        rs.setInstallDateIfNeeded(c.appId)
+        rs.incrementLaunchCount(c.appId)
 
         // Bypass the 1-hour cache so dashboard changes take effect immediately
-        rs.invalidateConfigCache()
+        rs.invalidateConfigCache(c.appId)
 
         val reviewConfig = runCatching { c.fetchReviewConfig(appId = c.appId, store = rs) }
             .getOrElse {
-                JishuLogger.info("Could not fetch review config, using manual fallback")
-                ReviewConfig.manualFallback
+                JishuLogger.info("Could not fetch review config, skipping prompt")
+                return false
             }
 
         if (!reviewConfig.enabled) {
             JishuLogger.info("Review prompt is disabled in dashboard config")
             return false
         }
-        if (rs.promptCount >= reviewConfig.maxPromptsPerDevice) {
-            JishuLogger.info("Max prompts per device reached (${rs.promptCount}/${reviewConfig.maxPromptsPerDevice})")
+        val promptCount = rs.promptCount(c.appId)
+        if (promptCount >= reviewConfig.maxPromptsPerDevice) {
+            JishuLogger.info("Max prompts per device reached ($promptCount/${reviewConfig.maxPromptsPerDevice})")
             return false
         }
         if (bypassTimingGates) {
             JishuLogger.info("DEBUG Bypass: skipping review launch/day/cooldown gates")
         } else {
-            rs.lastPromptDate?.let { lastMs ->
+            rs.lastPromptDate(c.appId)?.let { lastMs ->
                 val daysSince = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - lastMs)
                 if (daysSince < reviewConfig.cooldownDays) {
                     JishuLogger.info("Cooldown not elapsed ($daysSince/${reviewConfig.cooldownDays} days)")
@@ -249,7 +250,7 @@ object Jishu {
             }
         }
 
-        JishuReview.runPromptFlow(
+        return JishuReview.runPromptFlow(
             config    = reviewConfig,
             store     = rs,
             client    = c,
@@ -257,7 +258,6 @@ object Jishu {
             uiHandler = reviewUIHandler,
             activity  = activity,
         )
-        return true
     }
 
     private fun isDebugBuild(context: Context): Boolean {
