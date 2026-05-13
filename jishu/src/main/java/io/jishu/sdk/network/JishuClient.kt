@@ -209,14 +209,14 @@ internal class JishuClient(private val config: JishuConfig) {
 
     /** Fetch review config with a 1-hour TTL backed by ReviewStore. */
     suspend fun fetchReviewConfig(appId: String, store: ReviewStore): ReviewConfig {
-        store.cachedConfig()?.let { return it }
+        store.cachedConfig(appId)?.let { return it }
         val url = "${config.baseUrl}/api/apps/${URLEncoder.encode(appId, Charsets.UTF_8.name())}/review/config"
         val request = Request.Builder().url(url).get().build()
         JishuLogger.request("GET", url)
         val result = executeFeedbackWithRetry(request, method = "GET") { body ->
             json.decodeFromString<ReviewConfig>(body)
         }
-        store.cacheConfig(result)
+        store.cacheConfig(result, appId)
         return result
     }
 
