@@ -84,10 +84,12 @@ This repository includes a runnable sample project in [`App Example/`](./App%20E
 - Promo access checks with either `displayUserID` or a custom `externalUserId`
 - Manual review prompt triggering
 - Automatic review launch tracking from `MainActivity.onCreate`
+- Custom `JishuReviewUIHandler` implemented as a Compose `ModalBottomSheet` with a 1–5 rating row
 
 Key files:
 
 - [`App Example/app/src/main/java/com/jishuexample/app/JishuApplication.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/JishuApplication.kt)
+- [`App Example/app/src/main/java/com/jishuexample/app/JishuReviewHandler.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/JishuReviewHandler.kt)
 - [`App Example/app/src/main/java/com/jishuexample/app/MainActivity.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/MainActivity.kt)
 - [`App Example/app/src/main/java/com/jishuexample/app/MainScreen.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/MainScreen.kt)
 - [`App Example/app/src/main/java/com/jishuexample/app/MainViewModel.kt`](./App%20Example/app/src/main/java/com/jishuexample/app/MainViewModel.kt)
@@ -153,6 +155,7 @@ Use values from your Jishu dashboard:
 - `Check Access` calls `Jishu.checkAccess(...)`
 - `Ask for Review` calls `Jishu.requestReviewIfEligible(...)`
 - On debug builds, the review flow bypasses launch/day/cooldown timing gates and logs `DEBUG Bypass: skipping review launch/day/cooldown gates`
+- When the review prompt fires (auto or manual), a `ModalBottomSheet` appears with a 1–5 numbered rating row instead of the default `AlertDialog`
 
 ### Command-line build
 
@@ -545,11 +548,16 @@ Call once per cold app launch from your `Application.onCreate()`. The SDK increm
 > **Important:** Pass the `Activity` from your main Activity's `onCreate` — **not** `onResume`, which fires on every foreground transition.
 
 ```kotlin
-// Application.onCreate() — increments launch count and sets install date
+// Application.onCreate() — configure before trackLaunch is called
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        Jishu.configure(context = this, baseUrl = "...", apiToken = "...", appId = "...")
+        Jishu.configure(
+            context = this,
+            server = JishuEnvironment.PRODUCTION,
+            apiToken = "YOUR_API_TOKEN",
+            appId = "YOUR_APP_ID",
+        )
     }
 }
 
@@ -609,6 +617,126 @@ data class ReviewPromptResult(
 The SDK uses `rating` to decide whether to trigger the native Play review flow or capture feedback. You do not need to call any SDK method from within your handler — just return the data class.
 
 > **Note:** Do not store the `Activity` reference as a field in your handler. Use it only within the scope of the `suspend fun` call to prevent memory leaks.
+
+#### Compose `ModalBottomSheet` example
+
+The cleanest Compose pattern bridges the SDK's suspend callback to a `StateFlow` that drives a `ModalBottomSheet`. The handler class holds a `CancellableContinuation` and exposes `submit` / `dismiss` methods for the sheet to call.
+
+```kotlin
+// JishuReviewHandler.kt
+@Stable
+class JishuReviewHandler : JishuReviewUIHandler {
+
+    private val _promptState = MutableStateFlow<PromptState?>(null)
+    val promptState: StateFlow<PromptState?> = _promptState.asStateFlow()
+
+    private var continuation: CancellableContinuation<ReviewPromptResult>? = null
+
+    data class PromptState(val title: String, val question: String)
+
+    override suspend fun presentReviewPrompt(title: String, question: String): ReviewPromptResult {
+        _promptState.value = PromptState(title, question)
+        return suspendCancellableCoroutine { cont ->
+            continuation = cont
+            cont.invokeOnCancellation { _promptState.value = null; continuation = null }
+        }
+    }
+
+    fun submit(rating: Int) {
+        _promptState.value = null
+        continuation?.resume(ReviewPromptResult(rating = rating, dismissed = false))
+        continuation = null
+    }
+
+    fun dismiss() {
+        _promptState.value = null
+        continuation?.resume(ReviewPromptResult(rating = null, dismissed = true))
+        continuation = null
+    }
+}
+```
+
+Register the handler **before** `configure` or `trackLaunch`:
+
+```kotlin
+class MyApp : Application() {
+    val reviewHandler = JishuReviewHandler()
+
+    override fun onCreate() {
+        super.onCreate()
+        Jishu.reviewUIHandler = reviewHandler   // set before configure
+        Jishu.configure(context = this, server = JishuEnvironment.PRODUCTION,
+            apiToken = "YOUR_API_TOKEN", appId = "YOUR_APP_ID")
+    }
+}
+```
+
+Host the sheet in your root composable:
+
+```kotlin
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen(reviewHandler: JishuReviewHandler) {
+    val promptState by reviewHandler.promptState.collectAsStateWithLifecycle()
+
+    promptState?.let { state ->
+        ModalBottomSheet(
+            onDismissRequest = { reviewHandler.dismiss() },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            JishuReviewSheet(
+                title = state.title,
+                question = state.question,
+                onRatingSelected = { rating -> reviewHandler.submit(rating) },
+            )
+        }
+    }
+    // ... rest of your screen
+}
+
+@Composable
+private fun JishuReviewSheet(title: String, question: String, onRatingSelected: (Int) -> Unit) {
+    val options = listOf(
+        Triple(1, "Terrible", Color(0xFFE53935)),
+        Triple(2, "Bad",      Color(0xFFFF7043)),
+        Triple(3, "Okay",     Color(0xFFFFB300)),
+        Triple(4, "Good",     Color(0xFF7CB342)),
+        Triple(5, "Great",    Color(0xFF43A047)),
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp)
+            .navigationBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(text = question, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly) {
+            options.forEach { (rating, label, color) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)) {
+                    IconButton(onClick = { onRatingSelected(rating) }, modifier = Modifier.size(52.dp)) {
+                        Box(contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(44.dp).background(color, CircleShape)) {
+                            Text(text = rating.toString(),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text(text = label, style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+```
+
+The full working implementation is in [`App Example/`](./App%20Example).
 
 ### Public API
 

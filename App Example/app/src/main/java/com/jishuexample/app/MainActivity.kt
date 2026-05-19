@@ -18,9 +18,11 @@ class MainActivity : ComponentActivity() {
             Jishu.trackLaunch(this@MainActivity)
         }
 
+        val reviewHandler = (application as JishuApplication).reviewHandler
+
         setContent {
             AppExampleTheme {
-                MainScreen(activity = this)
+                MainScreen(activity = this, reviewHandler = reviewHandler)
             }
         }
     }

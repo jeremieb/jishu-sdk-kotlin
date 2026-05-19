@@ -71,6 +71,16 @@ internal object JishuLogger {
         }
     }
 
+    /** ⭐️  Verbose only — review eligibility status. */
+    fun review(message: String) {
+        if (level != JishuDebugLevel.VERBOSE) return
+        runCatching {
+            Log.d(TAG, "⭐️ [Jishu] $message")
+        }.getOrElse {
+            println("⭐️ [Jishu] $message")
+        }
+    }
+
     /** 📦  Verbose only — pretty-printed JSON response body. */
     fun responseBody(body: String?) {
         if (level != JishuDebugLevel.VERBOSE) return
