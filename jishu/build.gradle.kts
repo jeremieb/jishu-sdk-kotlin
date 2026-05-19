@@ -64,7 +64,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "page.jishu"
             artifactId = "jishu-android"
-            version = "0.1.10"
+            version = "0.1.11"
 
             afterEvaluate {
                 from(components["release"])
