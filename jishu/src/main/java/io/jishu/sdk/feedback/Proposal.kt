@@ -7,7 +7,7 @@ package io.jishu.sdk.feedback
 data class Proposal(
     val id: String,
     val title: String,
-    val description: String,
+    val description: String?,
     val status: ProposalStatus,
     val voteCount: Int,
     val createdAt: String,
