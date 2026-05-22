@@ -14,6 +14,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -96,6 +97,34 @@ class JishuClientTest {
         assertTrue(result.granted)
         assertEquals("grant_123", result.grantId)
         assertEquals(MatchType.DEVICE, result.matchType)
+    }
+
+    @Test
+    fun `checkAccess encodes platform in request body`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "granted": true,
+                      "grantId": "grant_123",
+                      "matchType": "device",
+                      "expiresAt": "2026-04-24T12:00:00.000Z",
+                      "serverTime": "2026-03-24T12:00:00.000Z"
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        client.checkAccess(deviceId = "device-uuid", externalUserId = "user_abc")
+
+        val request = server.takeRequest()
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("\"platform\":\"android\""))
+        assertTrue(body.contains("\"deviceId\":\"device-uuid\""))
+        assertTrue(body.contains("\"externalUserId\":\"user_abc\""))
+        assertFalse(body.contains("\"environment\":null"))
     }
 
     @Test

@@ -39,7 +39,7 @@ Add the dependency to your app or module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("page.jishu:jishu-android:0.1.8")
+    implementation("page.jishu:jishu-android")
 }
 ```
 
@@ -47,7 +47,7 @@ Or in Groovy `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'page.jishu:jishu-android:0.1.8'
+    implementation 'page.jishu:jishu-android'
 }
 ```
 
@@ -872,8 +872,8 @@ The library is versioned via **git tags**. Use full three-part semantic versioni
 ### Tag and push
 
 ```bash
-git tag 0.1.8
-git push origin 0.1.8
+git tag <version>
+git push origin <version>
 ```
 
 Or push all local tags at once:

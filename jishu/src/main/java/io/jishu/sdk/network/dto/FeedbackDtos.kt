@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 internal data class ProposalDto(
     val id: String,
     val title: String,
-    val description: String,
+    val description: String? = null,
     val status: String,
         val voteCount: Int = 0,
     val createdAt: String = "",
